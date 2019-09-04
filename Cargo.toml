@@ -1,0 +1,15 @@
+[package]
+name = "rust-tinyraytracer"
+version = "0.1.0"
+authors = ["Andrei Vasiliu <whyte.vuhuni@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.gtk]
+version = "0.4.1"
+default-features = false
+features = ["v3_20"]
+
+[dependencies.cairo-rs]
+version = "0.4.1"
