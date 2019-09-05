@@ -2,15 +2,14 @@ use crate::raytracer::raytracer::RayTracer;
 use crate::raytracer::color::ColorPixmap;
 use super::easy_pixbuf::EasyPixbuf;
 
-pub struct DebugWindow<'a> {
+pub struct DebugWindow {
     ray_tracer: RayTracer,
-    pixels: &'a mut [u8],
     width: usize,
     height: usize,
 }
 
-impl<'a> DebugWindow<'a> {
-    pub fn new(width: usize, height: usize, pixels: &'a mut [u8]) -> Self {
+impl DebugWindow {
+    pub fn new(width: usize, height: usize) -> Self {
         let mut ray_tracer = RayTracer::new_default(width, height);
         ray_tracer.add_test_objects();
 
@@ -18,14 +17,17 @@ impl<'a> DebugWindow<'a> {
             ray_tracer,
             width,
             height,
-            pixels,
         }
     }
 
-    pub fn render_frame(&mut self) {
+    pub fn ray_tracer(&self) -> &RayTracer {
+        &self.ray_tracer
+    }
+
+    pub fn render_frame(&self, pixels: &mut [u8]) {
         // FIXME: ???
         let mut scene_pixbuf = EasyPixbuf::new(
-            self.width, self.height, self.width * 4, 4, &mut self.pixels[..]
+            self.width, self.height, self.width * 4, 4, &mut pixels[..]
         );
 
         for y in 0..self.height {

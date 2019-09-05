@@ -6,6 +6,9 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[dependencies]
+arr_macro = "0.1.2"
+
 [dependencies.gtk]
 version = "0.4.1"
 default-features = false
@@ -13,3 +16,6 @@ features = ["v3_20"]
 
 [dependencies.cairo-rs]
 version = "0.4.1"
+
+[dependencies.gdk]
+version = "0.8.0"

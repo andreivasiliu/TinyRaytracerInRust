@@ -24,6 +24,24 @@ impl Vector {
         Vector { x, y, z }
     }
 
+    pub fn axis(&self, axis: usize) -> f64 {
+        match axis {
+            0 => self.x,
+            1 => self.y,
+            2 => self.z,
+            x => panic!("Wrong axis {} given to Vector!", x),
+        }
+    }
+
+    pub fn axis_mut(&mut self, axis: usize) -> &mut f64 {
+        match axis {
+            0 => &mut self.x,
+            1 => &mut self.y,
+            2 => &mut self.z,
+            x => panic!("Wrong axis {} given to Vector!", x),
+        }
+    }
+
     pub fn normalized(self) -> Vector {
         self * (1.0 / self.length())
     }

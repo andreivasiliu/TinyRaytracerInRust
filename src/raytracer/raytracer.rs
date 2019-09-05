@@ -6,6 +6,7 @@ use super::transformation::{TransformationStack};
 use super::point_light::PointLight;
 use super::math::{PI, INFINITY, EPSILON, sqrt};
 
+#[derive(Clone, Copy)]
 pub enum RayType {
     NormalRay,
     ReflectionRay,
@@ -68,7 +69,7 @@ impl RayTracer {
     }
 
     pub fn add_test_objects(&mut self) {
-        use super::csg::{CSG, Operator};
+        //use super::csg::{CSG, Operator};
         use super::math_shapes::{MathSphere, MathPlane};
         use super::material::SolidColorMaterial;
 
@@ -91,19 +92,19 @@ impl RayTracer {
             Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.2, 0.0)))
         ));*/
         self.objects.push(RTObject::new(
-            Box::new(MathSphere::new(t.clone(), Vector::new(15.0, -5.0, -20.0), 15.0)),
-            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.7, 0.0))),
+            Box::new(MathSphere::new(t.clone(), Vector::new(10.0, -5.0, -15.0), 15.0)),
+            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.0, 0.5))),
         ));
         self.objects.push(RTObject::new(
-            Box::new(MathSphere::new(t.clone(), Vector::new(-15.0, -5.0, -20.0), 15.0)),
-            Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 0.0, 1.0, 1.0), 0.6, 0.5))),
+            Box::new(MathSphere::new(t.clone(), Vector::new(-10.0, -5.0, -25.0), 15.0)),
+            Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 0.0, 1.0, 1.0), 0.0, 0.5))),
         ));
 
         // FIXME: ...
 
         self.objects.push(RTObject::new(
             Box::new(MathPlane::new(t.clone(), 0.0, 1.0, 0.0, 20.0)),
-            Some(Box::new(SolidColorMaterial::new(Color::new(0.5, 0.0, 0.5, 1.0), 0.0, 0.0)))
+            Some(Box::new(SolidColorMaterial::new(Color::new(0.5, 0.0, 0.5, 1.0), 0.2, 0.0)))
         ));
 
         self.point_lights.push(PointLight::new(
@@ -169,7 +170,7 @@ impl RayTracer {
             let cached_obj = RefCell::new(&mut cached_obj);
 
             let mut add_shadow_intersection = |d: f64| {
-                if d < EPSILON && d < distance_to_light {
+                if d > EPSILON && d < distance_to_light {
                     let cached_obj = cached_obj.borrow_mut().unwrap();
                     transparency *= cached_obj.get_material().get_transparency_at_uv(uv_coord);
                 }
