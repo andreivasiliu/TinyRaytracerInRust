@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 arr_macro = "0.1.2"
+pest = "2.1.2"
+pest_derive = "2.1.0"
 
 [dependencies.gtk]
 version = "0.4.1"

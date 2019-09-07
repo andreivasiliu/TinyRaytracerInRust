@@ -1,0 +1,70 @@
+// Inserted automatically at every ~ and repetition, unless disabled with @ or $
+WHITESPACE = _{ " " | "\n" | comment }
+comment = @{ "//" ~ (!"\n" ~ ANY)* ~ "\n" }
+
+// Names and identifiers
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+alnum = { alpha | digit }
+ident = @{ alpha ~ (alpha | digit)* }
+
+// The whole scene code!
+// It must parse from the start of input all the way to the end of input
+scene = _{ SOI ~ statement_list ~ EOI }
+
+// Statements
+statement_list = _{ statement* }
+statement = _{ (set_camera_statement | append_light_statement | do_statement | if_statement | call_statement | function_statement | command_statement | assignment_statement | transformation_statement) }
+command_statement = { command_ ~ "(" ~ param_list ~ ")" }
+assignment_statement = { local_? ~ id ~ "=" ~ expression }
+function_statement = { function_ ~ id ~ "(" ~ (id ~ ","?)* ~ ")" ~ statement_list ~ end_ }
+transformation_statement = { transformation_ ~ "(" ~ param_list ~ ")" ~ statement }
+call_statement = { call_ ~ id ~ "(" ~ param_list ~ ")" }
+if_statement = { if_ ~ bool_expression ~ then_ ~ statement_list ~ end_ }
+do_statement = { do_ ~ statement_list ~ end_ }
+append_light_statement = { append_light_ ~ "(" ~ param_list ~ ")" }
+set_camera_statement = { set_camera_ ~ "(" ~ param_list ~ ")" }
+
+// Statement parameters
+param_list = { (expression ~ ","?)* }
+
+// Keywords
+// !alnum is used so that "ifthen" doesn't match "if" followed by "then"
+append_light_ = @{"append" ~ WHITESPACE ~ "light" ~ !alnum}
+set_camera_ = @{"set" ~ WHITESPACE ~ "camera" ~ !alnum}
+if_ = @{ "if" ~ !alnum }
+then_ = @{ "then" ~ !alnum }
+do_ = @{ "do" ~ !alnum }
+end_ = @{ "end" ~ !alnum }
+call_ = @{ "call" ~ !alnum }
+function_ = @{ "function" ~ !alnum }
+local_ = @{ "local" ~ !alnum }
+command_ = @{ ("draw" | "display" | "append") ~ !alnum }
+obj_name = @{ ("sphere" | "plane" | "csg" | "cube") ~ !alnum }
+transformation_ = @{ ("scale" | "rotate" | "translate") ~ !alnum }
+color_name = @{ ("red" | "orange" | "yellow" | "green" | "blue" | "purple" | "black" | "white") ~ !alnum }
+
+// Variables and literals
+keyword = @{ local_ | transformation_ | command_ | obj_name | function_ }
+id = @{ !keyword ~ ident }
+number_literal = @{ digit+ ~ ("." ~ digit+)? ~ !alpha }
+string_literal = @{ ("\"" ~ (!"\"" ~ ANY)* ~ "\"") | ("\'" ~ (!"\'" ~ ANY)* ~ "\'") }
+
+// Object values
+color = { "rgb" ~ "(" ~ (expression ~ ","?){3} ~ ")" }
+vector = { "<" ~ expression ~ "," ~ expression ~ "," ~ expression ~ ">" }
+object = { obj_name ~ "(" ~ param_list ~ ")" }
+
+// Expressions
+add_operator = @{ "+" | "-" }
+mult_operator = @{ "*" | "/" | "%" }
+bool_operator = @{ "<" | ">" }
+bool_expression = { expression ~ bool_operator ~ expression }
+expression = { mult_expression ~ (add_operator ~ mult_expression)* }
+mult_expression = { neg_expression ~ (mult_operator ~ neg_expression)* }
+neg_expression = { minus? ~ value }
+minus = @{ "-" }
+value = {
+    number_literal | color_name | color | vector
+    | ("(" ~ expression ~ ")") | object | string_literal | id
+}

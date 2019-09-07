@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 mod raytracer;
 mod raydebugger;
+mod sceneparser;
 
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 360;
@@ -28,6 +29,14 @@ impl DebuggerContext {
 }
 
 fn main() {
+    if false {
+        let scene = sceneparser::scene_loader::load_scene();
+        match scene {
+            Ok(_scene) => return,
+            Err(err) => eprintln!("Parsing error: {}", err),
+        }
+        return;
+    }
 
     let debug_window = raydebugger::debug_window::DebugWindow::new(
         WIDTH as usize,
