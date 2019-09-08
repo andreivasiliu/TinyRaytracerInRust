@@ -107,7 +107,7 @@ impl RayTracer {
         ));
         self.objects.push(RTObject::new(
             Box::new(MathSphere::new(t.clone(), Vector::new(-15.0, -5.0, -10.0), 30.0)),
-            Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 0.0, 1.0, 1.0), 0.0, 0.5))),
+            Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 1.0, 1.0, 1.0), 0.0, 0.8))),
         ));
 
         // FIXME: ...

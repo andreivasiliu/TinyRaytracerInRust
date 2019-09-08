@@ -222,7 +222,33 @@ fn build_gui(application: &gtk::Application) {
         }
     });
 
-    let threshold_scale = gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
+    let raytrace_ortho_views_button =
+        gtk::CheckButton::new_with_label("Raytrace orthogonal views");
+    raytrace_ortho_views_button.connect_clicked({
+        let debugger_context = debugger_context.clone();
+        let rendered_line_sender = rendered_line_sender.clone();
+        move |button| {
+            let debug_window = &mut debugger_context.borrow_mut().debug_window;
+            debug_window.raytrace_ortho_views = button.get_active();
+
+            if debug_window.raytrace_ortho_views {
+                debug_window.create_rendering_thread(
+                    DrawingArea::TopView, rendered_line_sender.clone()
+                );
+
+                debug_window.create_rendering_thread(
+                    DrawingArea::FrontView, rendered_line_sender.clone()
+                );
+
+                debug_window.create_rendering_thread(
+                    DrawingArea::SideView, rendered_line_sender.clone()
+                );
+            }
+        }
+    });
+
+    let threshold_scale =
+        gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
     threshold_scale.set_digits(2);
     threshold_scale.set_draw_value(true);
     threshold_scale.set_value(ANTIALIAS_THRESHOLD);
@@ -240,7 +266,8 @@ fn build_gui(application: &gtk::Application) {
         }
     });
 
-    let show_anti_alias_edges_button = CheckButton::new_with_label("Show edges");
+    let show_anti_alias_edges_button =
+        CheckButton::new_with_label("Show edges");
 
     show_anti_alias_edges_button.connect_clicked({
         let debugger_context = debugger_context.clone();
@@ -265,7 +292,9 @@ fn build_gui(application: &gtk::Application) {
     rendered_line_receiver.attach(None, {
         let debugger_context = debugger_context.clone();
         let drawing_area = drawing_area.clone();
-        let debug_area = front_debug_area.clone();
+        let top_debug_area = top_debug_area.clone();
+        let front_debug_area = front_debug_area.clone();
+        let side_debug_area = side_debug_area.clone();
 
         move |(area, y, rendered_line, anti_aliased)| {
             let mut debugger_context = debugger_context.borrow_mut();
@@ -282,19 +311,19 @@ fn build_gui(application: &gtk::Application) {
                     let surface_data: &mut [u8] = &mut debugger_context.top_surface.get_data().unwrap();
 
                     debugger_context.debug_window.apply_line(y, &rendered_line, surface_data);
-                    debug_area.queue_draw();
+                    top_debug_area.queue_draw();
                 }
                 DrawingArea::FrontView => {
                     let surface_data: &mut [u8] = &mut debugger_context.front_surface.get_data().unwrap();
 
                     debugger_context.debug_window.apply_line(y, &rendered_line, surface_data);
-                    debug_area.queue_draw();
+                    front_debug_area.queue_draw();
                 }
                 DrawingArea::SideView => {
                     let surface_data: &mut [u8] = &mut debugger_context.side_surface.get_data().unwrap();
 
                     debugger_context.debug_window.apply_line(y, &rendered_line, surface_data);
-                    debug_area.queue_draw();
+                    side_debug_area.queue_draw();
                 }
             }
 
@@ -313,17 +342,19 @@ fn build_gui(application: &gtk::Application) {
                 DrawingArea::MainView, rendered_line_sender.clone()
             );
 
-            debug_window.create_rendering_thread(
-                DrawingArea::TopView, rendered_line_sender.clone()
-            );
+            if debug_window.raytrace_ortho_views {
+                debug_window.create_rendering_thread(
+                    DrawingArea::TopView, rendered_line_sender.clone()
+                );
 
-            debug_window.create_rendering_thread(
-                DrawingArea::FrontView, rendered_line_sender.clone()
-            );
+                debug_window.create_rendering_thread(
+                    DrawingArea::FrontView, rendered_line_sender.clone()
+                );
 
-            debug_window.create_rendering_thread(
-                DrawingArea::SideView, rendered_line_sender.clone()
-            );
+                debug_window.create_rendering_thread(
+                    DrawingArea::SideView, rendered_line_sender.clone()
+                );
+            }
         }
     });
 
@@ -347,6 +378,7 @@ fn build_gui(application: &gtk::Application) {
     hbox.pack_end(&render_button, false, false, 0);
     hbox.pack_end(&anti_alias_button, false, false, 0);
     hbox.pack_end(&threshold_scale, true, true, 10);
+    hbox.pack_start(&raytrace_ortho_views_button, false, true, 0);
     hbox.pack_start(&show_anti_alias_edges_button, false, true, 0);
 
     let hbox_top = gtk::Box::new(gtk::Orientation::Horizontal, 0);
