@@ -4,7 +4,7 @@ use super::vector::{Vector, UV, Ray};
 
 pub type AddIntersection<'a> = &'a mut dyn FnMut(f64);
 
-pub trait MathShape {
+pub trait MathShape: Send {
     fn intersects(&self, ray: Ray, add_intersection: AddIntersection);
     fn get_normal(&self, surface_point: Vector) -> Vector;
     fn is_inside(&self, point: Vector) -> bool;
@@ -12,12 +12,20 @@ pub trait MathShape {
     fn get_uv_coordinates(&self, point: Vector) -> Result<UV, &'static str>;
     fn set_transformation(&mut self, transformation: MatrixTransformation);
     fn get_transformation(&self) -> &MatrixTransformation;
+    fn clone_box(&self) -> Box<dyn MathShape>;
 
     fn reverse_transform_ray(&self, ray: Ray) -> Ray {
         self.get_transformation().reverse_transform_ray(ray)
     }
 }
 
+impl Clone for Box<dyn MathShape> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+#[derive(Clone)]
 pub struct MathSphere {
     transformation: MatrixTransformation,
     center: Vector,
@@ -112,8 +120,13 @@ impl MathShape for MathSphere {
     fn get_transformation(&self) -> &MatrixTransformation {
         &self.transformation
     }
+
+    fn clone_box(&self) -> Box<dyn MathShape> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct MathPlane {
     transformation: MatrixTransformation,
     a: f64,
@@ -192,8 +205,13 @@ impl MathShape for MathPlane {
     fn get_transformation(&self) -> &MatrixTransformation {
         &self.transformation
     }
+
+    fn clone_box(&self) -> Box<dyn MathShape> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct MathCube {
     transformation: MatrixTransformation,
     p1: MathPlane,
@@ -212,7 +230,7 @@ impl MathCube {
         let t = transformation;
 
         MathCube {
-            p1: MathPlane::new(t.clone(), 0.0, 0.0, 1.0, -(center.z + length)),
+            p1: MathPlane::new(t.clone(), 0.0, 0.0, 1.0, -(center.z + length / 2.0)),
             p6: MathPlane::new(t.clone(), 0.0, 0.0, -1.0, center.z + -length / 2.0),
             p2: MathPlane::new(t.clone(), 0.0, 1.0, 0.0, -(center.y + length / 2.0)),
             p5: MathPlane::new(t.clone(), 0.0, -1.0, 0.0, center.y + -length / 2.0),
@@ -292,7 +310,10 @@ impl MathShape for MathCube {
             }
         }
 
-        panic!("Get normal for MathCube failed!")
+        // FIXME
+        Vector::new(1.0, 1.0, 1.0)
+
+        //panic!("Get normal for MathCube failed!")
     }
 
     fn is_inside(&self, point: Vector) -> bool {
@@ -344,9 +365,15 @@ impl MathShape for MathCube {
         self.p4.set_transformation(transformation.clone());
         self.p5.set_transformation(transformation.clone());
         self.p6.set_transformation(transformation.clone());
+
+        self.transformation = transformation;
     }
 
     fn get_transformation(&self) -> &MatrixTransformation {
         &self.transformation
+    }
+
+    fn clone_box(&self) -> Box<dyn MathShape> {
+        Box::new(self.clone())
     }
 }

@@ -1,10 +1,18 @@
 use super::vector::UV;
 use super::color::{Color, RaytracerPixmap, ColorPixmap};
 
-pub trait Texture {
+pub trait Texture: Send {
     fn get_color_at(&self, uv_coordinates: UV) -> Color;
+    fn clone_box(&self) -> Box<dyn Texture>;
 }
 
+impl Clone for Box<dyn Texture> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+#[derive(Clone)]
 pub struct PixmapTexture {
     pixmap: RaytracerPixmap,
 }
@@ -23,5 +31,9 @@ impl Texture for PixmapTexture {
         let y = height - (uv_coordinates.v as usize * (height - 1)) - 1;
 
         self.pixmap.get_pixel_color(x, y)
+    }
+
+    fn clone_box(&self) -> Box<dyn Texture> {
+        Box::new(self.clone())
     }
 }

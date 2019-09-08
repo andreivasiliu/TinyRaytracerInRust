@@ -2,7 +2,7 @@ use super::texture::Texture;
 use super::vector::UV;
 use super::color::Color;
 
-pub trait Material {
+pub trait Material: Send {
     fn get_color_at(&self, u: f64, v: f64) -> Color;
     fn get_reflectivity_at(&self, u: f64, v: f64) -> f64;
     fn get_transparency_at(&self, u: f64, v: f64) -> f64;
@@ -21,8 +21,17 @@ pub trait Material {
     {
         return self.get_transparency_at(uv_coordinates.u, uv_coordinates.v);
     }
+
+    fn clone_box(&self) -> Box<dyn Material>;
 }
 
+impl Clone for Box<dyn Material> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+#[derive(Clone)]
 pub struct SolidColorMaterial {
     color: Color,
     reflectivity: f64,
@@ -51,8 +60,13 @@ impl Material for SolidColorMaterial {
     fn get_transparency_at(&self, _u: f64, _v: f64) -> f64 {
         self.transparency
     }
+
+    fn clone_box(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct TexturedMaterial {
     texture: Box<dyn Texture>,
     reflectivity: f64,
@@ -80,5 +94,9 @@ impl Material for TexturedMaterial {
 
     fn get_transparency_at(&self, _u: f64, _v: f64) -> f64 {
         self.transparency
+    }
+
+    fn clone_box(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
     }
 }

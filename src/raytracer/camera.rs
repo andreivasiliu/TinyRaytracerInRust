@@ -2,11 +2,19 @@ use super::color::Color;
 use super::vector::{Vector, Ray};
 use super::raytracer::{RayType, RayTracer, RayDebuggerCallback};
 
-pub trait Camera {
+pub trait Camera: Send {
     fn get_pixel_color(&self, x: f64, y: f64, ray_tracer: &RayTracer, ray_debugger_callback: RayDebuggerCallback) -> Color;
     fn create_ray(&self, x: f64, y: f64) -> Ray;
+    fn clone_box(&self) -> Box<dyn Camera>;
 }
 
+impl Clone for Box<dyn Camera> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+#[derive(Clone)]
 pub struct PerspectiveCamera {
     width: usize,
     height: usize,
@@ -64,9 +72,14 @@ impl Camera for PerspectiveCamera {
             point: self.center,
         }
     }
+
+    fn clone_box(&self) -> Box<dyn Camera> {
+        Box::new(self.clone())
+    }
 }
 
 // TODO: A way to specify cross/parallel viewing
+#[derive(Clone)]
 pub struct StereoscopicCamera {
     left_camera: PerspectiveCamera,
     right_camera: PerspectiveCamera,
@@ -121,9 +134,14 @@ impl Camera for StereoscopicCamera {
     fn create_ray(&self, x: f64, y: f64) -> Ray {
         self.left_camera.create_ray(x, y)
     }
+
+    fn clone_box(&self) -> Box<dyn Camera> {
+        Box::new(self.clone())
+    }
 }
 
 // TODO: Color masks for each eye
+#[derive(Clone)]
 pub struct AnaglyphCamera {
     left_camera: PerspectiveCamera,
     right_camera: PerspectiveCamera,
@@ -179,6 +197,10 @@ impl Camera for AnaglyphCamera {
 
     fn create_ray(&self, x: f64, y: f64) -> Ray {
         self.left_camera.create_ray(x, y)
+    }
+
+    fn clone_box(&self) -> Box<dyn Camera> {
+        Box::new(self.clone())
     }
 }
 

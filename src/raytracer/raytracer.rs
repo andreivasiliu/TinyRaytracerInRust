@@ -18,6 +18,7 @@ pub type RayDebuggerCallback<'a, 'b> = &'a mut Option<&'b mut dyn FnMut(
     i32, Ray, f64, Option<&RTObject>, &Color, &RayType
 )>;
 
+#[derive(Clone)]
 pub struct RayTracer {
     transformation_stack: TransformationStack,
     camera: Box<dyn Camera>,
@@ -71,7 +72,17 @@ impl RayTracer {
     pub fn add_test_objects(&mut self) {
         //use super::csg::{CSG, Operator};
         use super::math_shapes::{MathSphere, MathPlane};
+        //use super::math_shapes::MathCube;
         use super::material::SolidColorMaterial;
+        //use super::transformation::MatrixTransformation;
+
+        /*
+        self.transformation_stack
+            .push_transformation(MatrixTransformation::create_rotation_matrix(-0.3, 0.0, 0.0));
+
+        self.transformation_stack
+            .push_transformation(MatrixTransformation::create_rotation_matrix(0.0, 2.0, 0.0));
+        */
 
         let t = self.transformation_stack
             .get_transformation()
@@ -80,23 +91,22 @@ impl RayTracer {
         /*self.objects.push(RTObject::new(
             Box::new(CSG::new(
                 t.clone(),
-                RTObject::new_default(Box::new(CSG::new(
-                    t.clone(),
-                    RTObject::new_default(Box::new(MathSphere::new(t.clone(), Vector::new(10.0, -5.0, -55.0), 20.0))),
-                    RTObject::new_default(Box::new(MathSphere::new(t.clone(), Vector::new(-10.0, -5.0, -50.0), 20.0))),
-                    Operator::Union,
-                ))),
-                RTObject::new_default(Box::new(MathSphere::new(t.clone(), Vector::new(0.0, 0.0, -40.0), 20.0))),
+                RTObject::new_default(Box::new(MathCube::new(t.clone(), Vector::new(0.0, 0.0, 0.0), 40.0))),
+                RTObject::new_default(Box::new(MathSphere::new(t.clone(), Vector::new(0.0, 0.0, 0.0), 24.0))),
                 Operator::Intersection,
             )),
-            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.2, 0.0)))
-        ));*/
-        self.objects.push(RTObject::new(
-            Box::new(MathSphere::new(t.clone(), Vector::new(10.0, -5.0, -15.0), 15.0)),
-            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.0, 0.5))),
+            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.1, 0.7)))
         ));
         self.objects.push(RTObject::new(
-            Box::new(MathSphere::new(t.clone(), Vector::new(-10.0, -5.0, -25.0), 15.0)),
+            Box::new(MathCube::new(t.clone(), Vector::new(0.0, 0.0, 0.0), 40.0)),
+            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.5, 0.0))),
+        ));*/
+        self.objects.push(RTObject::new(
+            Box::new(MathSphere::new(t.clone(), Vector::new(20.0, -5.0, 10.0), 30.0)),
+            Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.5, 0.0))),
+        ));
+        self.objects.push(RTObject::new(
+            Box::new(MathSphere::new(t.clone(), Vector::new(-15.0, -5.0, -10.0), 30.0)),
             Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 0.0, 1.0, 1.0), 0.0, 0.5))),
         ));
 
@@ -325,6 +335,10 @@ impl RayTracer {
         let result = incident * r + normal * (r * cos_1 - cos_2);
 
         result.normalized()
+    }
+
+    pub fn get_objects(&self) -> &Vec<RTObject> {
+        &self.objects
     }
 
     pub fn get_pixel(

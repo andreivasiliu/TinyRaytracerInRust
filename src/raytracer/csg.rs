@@ -12,6 +12,7 @@ pub enum Operator {
     Difference,
 }
 
+#[derive(Clone)]
 pub struct CSG {
     transformation: MatrixTransformation,
     a_obj: RTObject,
@@ -105,7 +106,8 @@ impl MathShape for CSG {
                 } else if b.is_on_surface(surface_point) {
                     b.get_normal(surface_point)
                 } else {
-                    panic!("Get CSG normal failed.")
+                    //panic!("Get CSG normal failed.")
+                    Vector::new(1.0, 0.0, 0.0)
                 }
             }
             Operator::Difference => {
@@ -161,7 +163,7 @@ impl MathShape for CSG {
         } else if b.is_on_surface(point) {
             b.get_uv_coordinates(point)
         } else {
-            panic!("CSG's get_uv_coordinates called outside of a surface!")
+            Err("CSG's get_uv_coordinates called outside of a surface!")
         }
     }
 
@@ -176,5 +178,9 @@ impl MathShape for CSG {
     fn reverse_transform_ray(&self, ray: Ray) -> Ray {
         // CSG objects themselves do not have transformations.
         ray
+    }
+
+    fn clone_box(&self) -> Box<dyn MathShape> {
+        Box::new(self.clone())
     }
 }

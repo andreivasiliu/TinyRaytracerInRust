@@ -3,6 +3,7 @@ use super::color::Color;
 use super::material::{Material, SolidColorMaterial};
 use super::math_shapes::{MathShape, AddIntersection};
 
+#[derive(Clone)]
 pub struct RTObject {
     shape: Box<dyn MathShape>,
     material: Box<dyn Material>,
@@ -46,8 +47,3 @@ impl RTObject {
     }
 }
 
-impl From<Box<dyn MathShape>> for RTObject {
-    fn from(shape: Box<dyn MathShape>) -> Self {
-        RTObject::new_default(shape)
-    }
-}

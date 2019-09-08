@@ -1,6 +1,7 @@
 use super::color::Color;
 use super::vector::Vector;
 
+#[derive(Clone)]
 pub struct PointLight {
     point: Vector,
     color: Color,

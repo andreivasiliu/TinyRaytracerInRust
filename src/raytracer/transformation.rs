@@ -4,6 +4,7 @@ use super::vector::{Vector, Ray};
 // Just a normal stack, except that it knows how to multiply transformation
 // matrices.
 
+#[derive(Clone)]
 pub struct TransformationStack {
     stack: Vec<MatrixTransformation>,
 }

@@ -14,6 +14,13 @@ impl Color {
         a: 1.0,
     };
 
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+
     pub const EMPTY: Color = Color {
         r: 0.0,
         g: 0.0,
@@ -88,8 +95,17 @@ pub trait ColorPixmap {
 
     fn set_pixel_color(&mut self, x: usize, y: usize, color: Color);
     fn get_pixel_color(&self, x: usize, y: usize) -> Color;
+
+    fn fill_with_color(&mut self, color: Color) {
+        for x in 0..self.get_width() {
+            for y in 0..self.get_height() {
+                self.set_pixel_color(x, y, color);
+            }
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct RaytracerPixmap {
     width: usize,
     height: usize,
@@ -102,6 +118,24 @@ impl RaytracerPixmap {
             width,
             height,
             color_pixmap: vec![Color::EMPTY; width * height],
+        }
+    }
+
+    pub fn from_color_pixmap<S: ColorPixmap>(source: &S) -> Self {
+        let mut color_pixmap = Vec::with_capacity(
+            source.get_height() * source.get_width()
+        );
+
+        for y in 0..source.get_height() {
+            for x in 0..source.get_width() {
+                color_pixmap.push(source.get_pixel_color(x, y));
+            }
+        }
+
+        RaytracerPixmap {
+            width: source.get_width(),
+            height: source.get_height(),
+            color_pixmap,
         }
     }
 }

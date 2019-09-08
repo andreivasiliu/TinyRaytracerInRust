@@ -46,6 +46,7 @@ impl ColorPixmap for EasyPixbuf<'_> {
     fn set_pixel_color(&mut self, x: usize, y: usize, color: Color) {
         let pixel = self.get_pixel_slice_mut(x, y);
 
+        pixel[3] = (color.a * 255.0) as u8;
         pixel[2] = (color.r * 255.0) as u8;
         pixel[1] = (color.g * 255.0) as u8;
         pixel[0] = (color.b * 255.0) as u8;
@@ -58,7 +59,8 @@ impl ColorPixmap for EasyPixbuf<'_> {
             pixel[2] as f64 / 255.0,
             pixel[1] as f64 / 255.0,
             pixel[0] as f64 / 255.0,
-            1.0
+            pixel[3] as f64 / 255.0,
         )
     }
+
 }

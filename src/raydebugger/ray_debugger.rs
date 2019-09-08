@@ -4,8 +4,11 @@ use crate::raytracer::raytracer::{RayTracer, RayType};
 use crate::raytracer::rt_object::RTObject;
 use crate::raytracer::math::INFINITY;
 use super::debug_shape::DebugShape;
+use super::gui::DrawingArea;
 
 use cairo;
+
+pub const ORTHO_SCALE: f64 = 2.0;
 
 pub struct RayInfo {
     depth: i32,
@@ -16,6 +19,52 @@ pub struct RayInfo {
     intersected: bool,
     intersection_point: Vector,
     normal: Option<Vector>,
+}
+
+#[derive(Clone, Copy)]
+pub struct OrthoAxes {
+    pub axis1: usize,
+    pub axis2: usize,
+    pub dir1: f64,
+    pub dir2: f64,
+    pub scale: f64,
+}
+
+impl From<DrawingArea> for OrthoAxes {
+    fn from(area: DrawingArea) -> Self {
+        let (axis_x, axis_y, axis_z) = (0, 1, 2);
+
+        match area {
+            DrawingArea::MainView => panic!("Main view is not an orthogonal view!"),
+            DrawingArea::TopView => {
+                OrthoAxes {
+                    axis1: axis_x,
+                    axis2: axis_z,
+                    dir1: 1.0,
+                    dir2: -1.0,
+                    scale: ORTHO_SCALE,
+                }
+            }
+            DrawingArea::FrontView => {
+                OrthoAxes {
+                    axis1: axis_x,
+                    axis2: axis_y,
+                    dir1: 1.0,
+                    dir2: -1.0,
+                    scale: ORTHO_SCALE,
+                }
+            }
+            DrawingArea::SideView => {
+                OrthoAxes {
+                    axis1: axis_z,
+                    axis2: axis_y,
+                    dir1: -1.0,
+                    dir2: -1.0,
+                    scale: ORTHO_SCALE,
+                }
+            }
+        }
+    }
 }
 
 pub struct RayDebugger {
@@ -75,6 +124,29 @@ impl RayDebugger {
         ray_tracer.get_pixel(x, y, &mut Some(&mut ray_debugger_callback));
     }
 
+
+    pub fn draw_ortho_view(
+        &self, context: &cairo::Context, surface: &cairo::ImageSurface, area: DrawingArea
+    ) {
+        context.save();
+
+        // Background
+        context.set_source_rgb(0.1, 0.1, 0.1);
+        context.paint();
+
+        // Orthogonal raytraced view
+        context.set_source_surface(&*surface, 0.0, 0.0);
+        context.paint_with_alpha(0.25);
+
+        context.restore();
+
+        let ortho_axes: OrthoAxes = area.into();
+
+        // Grid and wireframe objects
+        self.draw_grid(context, ORTHO_SCALE);
+        self.draw_objects(context, ortho_axes);
+    }
+
     pub fn draw_grid(&self, context: &cairo::Context, scale: f64) {
         let width = self.width as f64;
         let height = self.height as f64;
@@ -82,9 +154,6 @@ impl RayDebugger {
         let center_y = height / 2.0;
 
         context.save();
-
-        context.set_source_rgb(0.1, 0.1, 0.1);
-        context.paint();
 
         context.set_source_rgb(0.6, 0.2, 0.6);
         context.set_line_width(0.1);
@@ -107,20 +176,19 @@ impl RayDebugger {
     }
 
     pub fn draw_objects(
-        &self, context: &cairo::Context, axis1: usize, axis2: usize,
-        dir1: f64, dir2: f64, scale: f64
+        &self, context: &cairo::Context, axes: OrthoAxes,
     ) {
         let draw_line = |from: Vector, to: Vector| {
             let center_x = self.width as f64 / 2.0;
             let center_y = self.height as f64 / 2.0;
 
             context.move_to(
-                center_x + scale * dir1 * from.axis(axis1),
-                center_y + scale * dir2 * from.axis(axis2),
+                center_x + axes.scale * axes.dir1 * from.axis(axes.axis1),
+                center_y + axes.scale * axes.dir2 * from.axis(axes.axis2),
             );
             context.line_to(
-                center_x + scale * dir1 * to.axis(axis1),
-                center_y + scale * dir2 * to.axis(axis2),
+                center_x + axes.scale * axes.dir1 * to.axis(axes.axis1),
+                center_y + axes.scale * axes.dir2 * to.axis(axes.axis2),
             );
             context.stroke();
         };
