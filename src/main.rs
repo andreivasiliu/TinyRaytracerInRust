@@ -5,7 +5,7 @@ mod raydebugger;
 mod sceneparser;
 
 fn main() {
-    if false {
+    if true {
         let scene = sceneparser::scene_loader::load_scene();
         match scene {
             Ok(_scene) => return,

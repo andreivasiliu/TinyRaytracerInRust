@@ -13,7 +13,7 @@ ident = @{ alpha ~ (alpha | digit)* }
 scene = _{ SOI ~ statement_list ~ EOI }
 
 // Statements
-statement_list = _{ statement* }
+statement_list = { statement* }
 statement = _{ (set_camera_statement | append_light_statement | do_statement | if_statement | call_statement | function_statement | command_statement | assignment_statement | transformation_statement) }
 command_statement = { command_ ~ "(" ~ param_list ~ ")" }
 assignment_statement = { local_? ~ id ~ "=" ~ expression }
@@ -47,6 +47,7 @@ color_name = @{ ("red" | "orange" | "yellow" | "green" | "blue" | "purple" | "bl
 // Variables and literals
 keyword = @{ local_ | transformation_ | command_ | obj_name | function_ }
 id = @{ !keyword ~ ident }
+id_reference = @{ !keyword ~ ident }
 number_literal = @{ digit+ ~ ("." ~ digit+)? ~ !alpha }
 string_literal = @{ ("\"" ~ (!"\"" ~ ANY)* ~ "\"") | ("\'" ~ (!"\'" ~ ANY)* ~ "\'") }
 
@@ -66,5 +67,5 @@ neg_expression = { minus? ~ value }
 minus = @{ "-" }
 value = {
     number_literal | color_name | color | vector
-    | ("(" ~ expression ~ ")") | object | string_literal | id
+    | ("(" ~ expression ~ ")") | object | string_literal | id_reference
 }
