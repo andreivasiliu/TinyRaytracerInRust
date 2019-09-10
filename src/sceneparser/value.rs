@@ -11,3 +11,13 @@ pub enum Value {
     Object(Shape),
     Texture(Texture),
 }
+
+impl Value {
+    pub fn to_number(&self) -> f64 {
+        match self {
+            Value::Number(number) => *number,
+            // FIXME: no panic
+            _ => panic!("Cannot convert value to number"),
+        }
+    }
+}

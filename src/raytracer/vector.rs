@@ -12,7 +12,7 @@ pub struct UV {
     pub v: f64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Vector {
     pub x: f64,
     pub y: f64,

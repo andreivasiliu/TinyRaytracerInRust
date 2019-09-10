@@ -114,7 +114,7 @@ impl MathShape for CSG {
                 if a.is_on_surface(surface_point) {
                     a.get_normal(surface_point)
                 } else if b.is_on_surface(surface_point) {
-                    b.get_normal(surface_point)
+                    b.get_normal(surface_point) * -1.0
                 } else {
                     // FIXME: Weird, why doesn't this panic like the one above?
                     Vector::new(1.0, 0.0, 0.0)

@@ -4,38 +4,66 @@ use crate::raytracer::color::Color;
 use crate::raytracer::vector::Vector;
 use crate::raytracer::math_shapes::MathSphere;
 use crate::raytracer::transformation::MatrixTransformation;
+use crate::raytracer::csg::{CSG, Operator};
 
 #[derive(Debug, Clone)]
 pub struct Shape {
-    pub color: Option<(f64, f64, f64, f64)>,
+    pub color: Color,
     pub reflectivity: f64,
     pub transparency: f64,
     pub kind: ShapeKind,
+    pub transformation: MatrixTransformation,
 }
 
 #[derive(Debug, Clone)]
 pub enum ShapeKind {
-    Sphere { center: (f64, f64, f64), radius: f64 },
+    Sphere { center: Vector, radius: f64 },
     Cube { length: f64 },
-    Plane { normal: (f64, f64, f64), distance: f64 },
-    // CSG { operator,  }
+    Plane { normal: Vector, distance: f64 },
+    CSG { operator: CSGOperator, a: Box<Shape>, b: Box<Shape> },
+}
+
+#[derive(Debug, Clone)]
+pub enum CSGOperator {
+    Intersection,
+    Union,
+    Difference,
 }
 
 impl Shape {
-    pub fn to_rt_object(&self, transformation: MatrixTransformation) -> RTObject {
+    pub fn to_rt_object(&self) -> RTObject {
         match self.kind {
             ShapeKind::Sphere { center, radius } => {
-                let center = Vector::new(center.0, center.1, center.2);
-                let color = self.color.unwrap_or((0.0, 0.0, 0.0, 1.0));
-                let color = Color::new(color.0, color.1, color.2, color.3);
-
                 RTObject::new(
-                    Box::new(MathSphere::new(transformation, center, radius)),
-                    Some(Box::new(SolidColorMaterial::new(color, self.reflectivity, self.transparency)))
+                    Box::new(MathSphere::new(
+                        self.transformation.clone(), center, radius
+                    )),
+                    Some(Box::new(SolidColorMaterial::new(
+                        self.color, self.reflectivity, self.transparency
+                    ))),
                 )
             }
             ShapeKind::Cube { .. } => unimplemented!(),
             ShapeKind::Plane { .. } => unimplemented!(),
+            ShapeKind::CSG { ref operator, ref a, ref b } => {
+                let a = a.to_rt_object();
+                let b = b.to_rt_object();
+
+                let operator = match operator {
+                    CSGOperator::Intersection => Operator::Intersection,
+                    CSGOperator::Union => Operator::Union,
+                    CSGOperator::Difference => Operator::Difference,
+                };
+
+                RTObject::new(
+                    Box::new(CSG::new(
+                        self.transformation.clone(), a, b, operator
+                    )),
+                    Some(Box::new(SolidColorMaterial::new(
+                        self.color, self.reflectivity, self.transparency
+                    ))),
+                )
+            }
         }
     }
 }

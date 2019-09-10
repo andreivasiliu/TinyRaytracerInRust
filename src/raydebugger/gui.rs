@@ -114,8 +114,13 @@ fn build_gui(application: &gtk::Application) {
     top_debug_area.set_size_request(WIDTH, HEIGHT);
     top_debug_area.connect_draw({
         let debugger_context = debugger_context.clone();
-        move |_widget, context: &cairo::Context| {
+        move |widget, context: &cairo::Context| {
             let debugger_context = debugger_context.borrow();
+
+            // Scale to occupy the whole drawing area
+            let width = widget.get_allocated_width();
+            let height = widget.get_allocated_height();
+            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
 
             debugger_context.ray_debugger.draw_ortho_view(
                 context, &debugger_context.top_surface, DrawingArea::TopView
@@ -129,8 +134,13 @@ fn build_gui(application: &gtk::Application) {
     front_debug_area.set_size_request(WIDTH, HEIGHT);
     front_debug_area.connect_draw({
         let debugger_context = debugger_context.clone();
-        move |_widget, context: &cairo::Context| {
+        move |widget, context: &cairo::Context| {
             let debugger_context = debugger_context.borrow();
+
+            // Scale to occupy the whole drawing area
+            let width = widget.get_allocated_width();
+            let height = widget.get_allocated_height();
+            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
 
             debugger_context.ray_debugger.draw_ortho_view(
                 context, &debugger_context.front_surface, DrawingArea::FrontView
@@ -144,8 +154,13 @@ fn build_gui(application: &gtk::Application) {
     side_debug_area.set_size_request(WIDTH, HEIGHT);
     side_debug_area.connect_draw({
         let debugger_context = debugger_context.clone();
-        move |_widget, context: &cairo::Context| {
+        move |widget, context: &cairo::Context| {
             let debugger_context = debugger_context.borrow();
+
+            // Scale to occupy the whole drawing area
+            let width = widget.get_allocated_width();
+            let height = widget.get_allocated_height();
+            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
 
             debugger_context.ray_debugger.draw_ortho_view(
                 context, &debugger_context.side_surface, DrawingArea::SideView
@@ -162,12 +177,19 @@ fn build_gui(application: &gtk::Application) {
     );
     drawing_area.connect_draw({
         let debugger_context = debugger_context.clone();
-        move |_widget, context: &cairo::Context| {
+        move |widget, context: &cairo::Context| {
             let debugger_context = debugger_context.borrow();
 
+            // Scale to occupy the whole drawing area
+            let width = widget.get_allocated_width();
+            let height = widget.get_allocated_height();
+            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+
+            // Paint the raytraced image
             context.set_source_surface(&*debugger_context.main_surface, 0.0, 0.0);
             context.paint();
 
+            // Highlight which pixels would be anti-aliased
             context.set_source_surface(&*debugger_context.edge_pixels, 0.0, 0.0);
             context.paint();
 
@@ -222,6 +244,32 @@ fn build_gui(application: &gtk::Application) {
         }
     });
 
+    let hbox_top = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    hbox_top.pack_start(&drawing_area, true, true, 1);
+    hbox_top.pack_start(&top_debug_area, true, true, 1);
+
+    let hbox_bottom = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    hbox_bottom.pack_start(&side_debug_area, true, true, 1);
+    hbox_bottom.pack_start(&front_debug_area, true, true, 1);
+
+    let show_ortho_views_button =
+        gtk::CheckButton::new_with_label("Show orthogonal views");
+    show_ortho_views_button.set_active(true);
+    show_ortho_views_button.connect_clicked({
+        let top_debug_area = top_debug_area.clone();
+        let front_debug_area = front_debug_area.clone();
+        let side_debug_area = side_debug_area.clone();
+        let hbox_bottom = hbox_bottom.clone();
+        move |button| {
+            let show_ortho_views = button.get_active();
+
+            top_debug_area.set_visible(show_ortho_views);
+            front_debug_area.set_visible(show_ortho_views);
+            side_debug_area.set_visible(show_ortho_views);
+            hbox_bottom.set_visible(show_ortho_views);
+        }
+    });
+
     let raytrace_ortho_views_button =
         gtk::CheckButton::new_with_label("Raytrace orthogonal views");
     raytrace_ortho_views_button.connect_clicked({
@@ -248,8 +296,8 @@ fn build_gui(application: &gtk::Application) {
     });
 
     let threshold_scale =
-        gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
-    threshold_scale.set_digits(2);
+        gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 0.1, 0.001);
+    threshold_scale.set_digits(3);
     threshold_scale.set_draw_value(true);
     threshold_scale.set_value(ANTIALIAS_THRESHOLD);
     threshold_scale.set_value_pos(gtk::PositionType::Left);
@@ -336,6 +384,7 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
         move |_button| {
+            debugger_context.borrow_mut().debug_window.reload_ray_tracer();
             let debug_window = &debugger_context.borrow().debug_window;
 
             debug_window.create_rendering_thread(
@@ -378,21 +427,14 @@ fn build_gui(application: &gtk::Application) {
     hbox.pack_end(&render_button, false, false, 0);
     hbox.pack_end(&anti_alias_button, false, false, 0);
     hbox.pack_end(&threshold_scale, true, true, 10);
+    hbox.pack_start(&show_ortho_views_button, false, true, 0);
     hbox.pack_start(&raytrace_ortho_views_button, false, true, 0);
     hbox.pack_start(&show_anti_alias_edges_button, false, true, 0);
 
-    let hbox_top = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    hbox_top.pack_start(&drawing_area, true, true, 1);
-    hbox_top.pack_start(&top_debug_area, true, true, 1);
-
-    let hbox_bottom = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    hbox_bottom.pack_start(&side_debug_area, true, true, 1);
-    hbox_bottom.pack_start(&front_debug_area, true, true, 1);
-
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     vbox.pack_start(&hbox, false, false, 0);
-    vbox.pack_start(&hbox_top, false, false, 1);
-    vbox.pack_start(&hbox_bottom, false, false, 1);
+    vbox.pack_start(&hbox_top, true, true, 1);
+    vbox.pack_start(&hbox_bottom, true, true, 1);
 
     window.add(&vbox);
 

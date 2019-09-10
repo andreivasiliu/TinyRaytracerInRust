@@ -44,7 +44,7 @@ pub trait Transformation {
     fn reverse_transform_ray(&self, ray: Ray) -> Ray;
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MatrixTransformation {
     matrix: [[f64; 4]; 4],
     inverse_matrix: [[f64; 4]; 4],

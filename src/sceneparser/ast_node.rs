@@ -1,7 +1,9 @@
+use crate::raytracer::color::Color;
+use crate::raytracer::vector::Vector;
 use super::context::{SceneContext, Identifier};
 use super::scene_loader::Rule;
 use super::value::Value;
-use super::shape::{Shape, ShapeKind};
+use super::shape::{Shape, ShapeKind, CSGOperator};
 
 use pest::iterators::Pair;
 use std::rc::Rc;
@@ -38,7 +40,10 @@ pub enum AstStatement {
 pub enum AstExpression {
     Value(Value),
     Reference(Identifier),
+    Vector { x: Box<AstExpression>, y: Box<AstExpression>, z: Box<AstExpression> },
+    Rgb { r: Box<AstExpression>, g: Box<AstExpression>, b: Box<AstExpression> },
     Object { name: String, param_list: Vec<AstExpression> },
+    Minus(Box<AstExpression>),
 }
 
 pub fn expect_id(pair: Pair<Rule>) -> String {
@@ -52,10 +57,15 @@ pub fn expect_param_list(pair: Pair<Rule>) -> Vec<AstExpression> {
 
     let mut param_list = Vec::new();
     for pair in pair.into_inner() {
-        assert_eq!(pair.as_rule(), Rule::expression);
-        param_list.push(AstExpression::from_pest(pair));
+        param_list.push(expect_expression(pair));
     }
     param_list
+}
+
+pub fn expect_expression(pair: Pair<Rule>) -> AstExpression {
+    assert_eq!(pair.as_rule(), Rule::expression);
+
+    AstExpression::from_pest(pair)
 }
 
 impl AstStatement {
@@ -94,9 +104,7 @@ impl AstStatement {
                 let object = value_list.into_iter().next().unwrap();
 
                 if let Value::Object(shape) = object {
-                    let transformation =
-                        context.ray_tracer().get_current_transformation().clone();
-                    context.ray_tracer().add_object(shape.to_rt_object(transformation));
+                    context.ray_tracer().add_object(shape.to_rt_object());
                 } else {
                     // FIXME: no assert
                     panic!("Didn't get an object on draw!");
@@ -220,15 +228,29 @@ impl AstExpression {
                     unimplemented!("Didn't find variable, don't know how to error")
                 }
             }
+            AstExpression::Vector { x, y, z } => {
+                let x = x.evaluate(context).to_number();
+                let y = y.evaluate(context).to_number();
+                let z = z.evaluate(context).to_number();
+
+                Value::Vector { x, y, z }
+            }
+            AstExpression::Rgb { r, g, b } => {
+                let r = r.evaluate(context).to_number();
+                let g = g.evaluate(context).to_number();
+                let b = b.evaluate(context).to_number();
+
+                Value::Color { r, g, b, a: 1.0 }
+            }
             AstExpression::Object { name, param_list } => {
                 let value_list = param_list
                     .iter().map(|param| param.evaluate(context));
 
                 match name.as_str() {
                     "sphere" => {
-                        let mut center = (0.0, 0.0, 0.0);
+                        let mut center = Vector::new(0.0, 0.0, 0.0);
                         let mut radius = None;
-                        let mut color = None;
+                        let mut color = Color::BLACK;
                         let mut reflectivity = 0.0;
                         let mut transparency = 0.0;
                         let mut param_number = 0;
@@ -247,10 +269,10 @@ impl AstExpression {
                                     }
                                 }
                                 Value::Color { r, g, b, a } => {
-                                    color = Some((r, g, b, a));
+                                    color = Color::new(r, g, b, a);
                                 }
                                 Value::Vector { x, y, z } => {
-                                    center = (x, y, z);
+                                    center = Vector::new(x, y, z);
                                 }
                                 _ => panic!("Unknown sphere parameter!")
                             }
@@ -262,17 +284,98 @@ impl AstExpression {
                             None => panic!("No size given to sphere object!"),
                         };
 
+                        let transformation =
+                            context.ray_tracer().get_current_transformation().clone();
+
                         Value::Object(Shape {
                             color,
                             reflectivity,
                             transparency,
+                            transformation,
                             kind: ShapeKind::Sphere {
                                 center,
                                 radius,
                             },
                         })
                     }
+                    "csg" => {
+                        let mut color = Color::BLACK;
+                        let mut reflectivity = 0.0;
+                        let mut transparency = 0.0;
+                        let mut operator = CSGOperator::Union;
+                        let mut param_number = 0;
+                        let mut object_number = 0;
+                        let mut object_a = None;
+                        let mut object_b = None;
+
+                        for value in value_list {
+                            match value {
+                                Value::Number(number) => {
+                                    param_number += 1;
+
+                                    match param_number {
+                                        1 => reflectivity = number,
+                                        2 => transparency = number,
+                                        // FIXME: No panic
+                                        _ => panic!("Unknown CSG parameter!")
+                                    }
+                                }
+                                Value::Color { r, g, b, a } => {
+                                    color = Color::new(r, g, b, a);
+                                }
+                                Value::String(string) => {
+                                    operator = match string.as_str() {
+                                        "union" => CSGOperator::Union,
+                                        "intersection" => CSGOperator::Intersection,
+                                        "difference" => CSGOperator::Difference,
+                                        // FIXME: No panic
+                                        operator => panic!("Unknown CSG operator: {}", operator),
+                                    }
+                                }
+                                Value::Object(shape) => {
+                                    object_number += 1;
+
+                                    match object_number {
+                                        1 => object_a = Some(shape),
+                                        2 => object_b = Some(shape),
+                                        // FIXME: No panic
+                                        _ => panic!("Unknown CSG parameter!")
+                                    }
+                                }
+                                _ => panic!("Unknown sphere parameter!")
+                            }
+                        }
+
+                        // FIXME: No panic
+                        let object_a = object_a.expect("No object for CSG!");
+                        let object_b = object_b.expect("No second object for CSG!");
+
+                        let transformation =
+                            context.ray_tracer().get_current_transformation().clone();
+
+                        Value::Object(Shape {
+                            color,
+                            reflectivity,
+                            transparency,
+                            transformation,
+                            kind: ShapeKind::CSG {
+                                operator,
+                                a: Box::new(object_a),
+                                b: Box::new(object_b),
+                            },
+                        })
+                    }
                     _ => unimplemented!("Shape {} not yet implemented", name),
+                }
+            }
+            AstExpression::Minus(expression) => {
+                match expression.evaluate(context) {
+                    Value::Number(number) => Value::Number(-number),
+                    Value::Vector { x, y, z } => {
+                        Value::Vector { x: -x, y: -y, z: -z }
+                    },
+                    // FIXME: No panic
+                    value => panic!("Cannot apply - to {:?}", value),
                 }
             }
         }
@@ -310,7 +413,7 @@ impl AstExpression {
                 assert_eq!(value.as_rule(), Rule::value);
 
                 if minus {
-                    unimplemented!()
+                    AstExpression::Minus(Box::new(AstExpression::from_pest(value)))
                 } else {
                     AstExpression::from_pest(value)
                 }
@@ -357,7 +460,41 @@ impl AstExpression {
 
                 AstExpression::Object { name: obj_name.as_str().to_string(), param_list }
             }
-            rule => unimplemented!("Unknown expression rule {:?}", rule),
+            Rule::vector => {
+                let mut inner = pair.into_inner();
+
+                let x = expect_expression(inner.next().unwrap());
+                let y = expect_expression(inner.next().unwrap());
+                let z = expect_expression(inner.next().unwrap());
+                assert_eq!(inner.next(), None);
+
+                AstExpression::Vector {
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    z: Box::new(z),
+                }
+            }
+            Rule::color => {
+                let mut inner = pair.into_inner();
+
+                let r = expect_expression(inner.next().unwrap());
+                let g = expect_expression(inner.next().unwrap());
+                let b = expect_expression(inner.next().unwrap());
+                assert_eq!(inner.next(), None);
+
+                AstExpression::Rgb {
+                    r: Box::new(r),
+                    g: Box::new(g),
+                    b: Box::new(b),
+                }
+            }
+            Rule::string_literal => {
+                let string_with_quotes = pair.as_str();
+                let string = &string_with_quotes[1..string_with_quotes.len()-1];
+
+                AstExpression::Value(Value::String(string.to_string()))
+            }
+            _ => unimplemented!("Unimplemented rule: {}", pair)
         }
     }
 }

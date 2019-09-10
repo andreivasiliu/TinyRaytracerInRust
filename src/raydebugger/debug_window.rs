@@ -1,3 +1,4 @@
+use crate::sceneparser::scene_loader::load_scene;
 use crate::raytracer::raytracer::RayTracer;
 use crate::raytracer::color::{Color, ColorPixmap, RaytracerPixmap};
 use crate::raytracer::vector::{Vector, Ray};
@@ -10,7 +11,7 @@ use super::ray_debugger::OrthoAxes;
 use glib::Sender;
 use std::thread;
 
-pub const ANTIALIAS_THRESHOLD: f64 = 0.1;
+pub const ANTIALIAS_THRESHOLD: f64 = 0.01;
 pub const ANTIALIAS_LEVEL: i32 = 3;
 
 #[derive(Clone)]
@@ -27,11 +28,8 @@ pub struct DebugWindow {
 
 impl DebugWindow {
     pub fn new(width: usize, height: usize) -> Self {
-        let mut ray_tracer = RayTracer::new_default(width, height);
-        ray_tracer.add_test_objects();
-
         DebugWindow {
-            ray_tracer,
+            ray_tracer: Self::load_ray_tracer(width, height),
             width,
             height,
             raytrace_ortho_views: false,
@@ -40,6 +38,19 @@ impl DebugWindow {
             antialiasing_level: ANTIALIAS_LEVEL,
             antialiased_lines: vec![false; height],
         }
+    }
+
+    fn load_ray_tracer(width: usize, height: usize) -> RayTracer {
+        let mut ray_tracer = RayTracer::new_default(width, height);
+        ray_tracer.add_test_objects();
+        if let Err(err) = load_scene(&mut ray_tracer) {
+            eprintln!("Error parsing scene: {}", err);
+        }
+        ray_tracer
+    }
+
+    pub fn reload_ray_tracer(&mut self) {
+        self.ray_tracer = Self::load_ray_tracer(self.width, self.height);
     }
 
     pub fn ray_tracer(&self) -> &RayTracer {

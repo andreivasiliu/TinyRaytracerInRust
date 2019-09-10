@@ -71,7 +71,8 @@ impl RayTracer {
 
     pub fn add_test_objects(&mut self) {
         //use super::csg::{CSG, Operator};
-        use super::math_shapes::{MathSphere, MathPlane};
+        use super::math_shapes::MathPlane;
+        //use super::math_shapes::MathSphere;
         //use super::math_shapes::MathCube;
         use super::material::SolidColorMaterial;
         //use super::transformation::MatrixTransformation;
@@ -101,14 +102,14 @@ impl RayTracer {
             Box::new(MathCube::new(t.clone(), Vector::new(0.0, 0.0, 0.0), 40.0)),
             Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.5, 0.0))),
         ));*/
-        self.objects.push(RTObject::new(
+        /*self.objects.push(RTObject::new(
             Box::new(MathSphere::new(t.clone(), Vector::new(20.0, -5.0, 10.0), 30.0)),
             Some(Box::new(SolidColorMaterial::new(Color::new(1.0, 0.0, 0.0, 1.0), 0.5, 0.0))),
         ));
         self.objects.push(RTObject::new(
             Box::new(MathSphere::new(t.clone(), Vector::new(-15.0, -5.0, -10.0), 30.0)),
             Some(Box::new(SolidColorMaterial::new(Color::new(0.0, 1.0, 1.0, 1.0), 0.0, 0.8))),
-        ));
+        ));*/
 
         // FIXME: ...
 
