@@ -2,7 +2,7 @@ use super::color::Color;
 use super::vector::{Vector, UV, Ray};
 use super::rt_object::RTObject;
 use super::camera::{Camera, PerspectiveCamera};
-use super::transformation::{TransformationStack};
+use super::transformation::{TransformationStack, MatrixTransformation};
 use super::point_light::PointLight;
 use super::math::{PI, INFINITY, EPSILON, sqrt};
 
@@ -312,6 +312,12 @@ impl RayTracer {
                 .expect("Expected transformation in stack!")
                 .clone()
         );
+    }
+
+    pub fn get_current_transformation(&self) -> &MatrixTransformation {
+        self.transformation_stack
+            .get_transformation()
+            .expect("Expected transformation in stack!")
     }
 
     fn get_reflected_ray_direction(incident: Vector, normal: Vector) -> Vector {

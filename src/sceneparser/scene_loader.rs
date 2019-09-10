@@ -1,3 +1,5 @@
+use crate::raytracer::raytracer::RayTracer;
+
 use super::ast_node::AstStatement;
 use super::context::SceneContext;
 
@@ -9,17 +11,19 @@ use pest_derive::Parser;
 #[grammar = "sceneparser/scene_grammar.pest"]
 pub struct SceneParser;
 
-const SCENE: &'static str = r###"a = red
+const SCENE: &'static str = "
+a = red
 function x(f)
     a = sphere(f, 2)
 end
 call x(green)
-"###;
+";
 
 pub fn load_scene() -> Result<(), pest::error::Error<Rule>> {
     let mut pairs: Pairs<Rule> = SceneParser::parse(Rule::scene, SCENE)?;
 
-    let mut context = SceneContext::new();
+    let mut ray_tracer = RayTracer::new_default(200, 200);
+    let mut context = SceneContext::new(&mut ray_tracer);
 
     let statement_list = pairs.next().unwrap();
     assert_eq!(statement_list.as_rule(), Rule::statement_list);
@@ -31,7 +35,7 @@ pub fn load_scene() -> Result<(), pest::error::Error<Rule>> {
     println!("AST statement: {:?}", ast);
 
     ast.execute(&mut context);
-    println!("Result: a = {:?}", context.locals().get("a"));
+    println!("Result: a = {:?}", context.locals());
 
     Ok(())
 }

@@ -30,7 +30,8 @@ pub enum AstStatement {
     StatementList(Vec<AstStatement>),
     Assignment { local: bool, id: Identifier, expression: AstExpression },
     Function(Function),
-    CallFunction { id: Identifier, param_list: Vec<AstExpression> }
+    CallFunction { id: Identifier, param_list: Vec<AstExpression> },
+    Draw { param_list: Vec<AstExpression> },
 }
 
 #[derive(Debug)]
@@ -77,12 +78,29 @@ impl AstStatement {
                 context.add_function(function.id.clone(), function.clone());
             }
             AstStatement::CallFunction { id, param_list } => {
-                // FIXME: no unwrap
                 let value_list: Vec<_> = param_list
                     .into_iter()
                     .map(|param| param.evaluate(context))
                     .collect();
                 context.enter_call(id).call(value_list);
+            }
+            AstStatement::Draw { param_list } => {
+                let value_list: Vec<_> = param_list
+                    .into_iter()
+                    .map(|param| param.evaluate(context))
+                    .collect();
+
+                assert_eq!(value_list.len(), 1);
+                let object = value_list.into_iter().next().unwrap();
+
+                if let Value::Object(shape) = object {
+                    let transformation =
+                        context.ray_tracer().get_current_transformation().clone();
+                    context.ray_tracer().add_object(shape.to_rt_object(transformation));
+                } else {
+                    // FIXME: no assert
+                    panic!("Didn't get an object on draw!");
+                }
             }
         }
     }
@@ -159,10 +177,28 @@ impl AstStatement {
                 assert_eq!(inner.next().unwrap().as_rule(), Rule::call_);
                 let id = expect_id(inner.next().unwrap());
                 let param_list: Vec<AstExpression> = expect_param_list(inner.next().unwrap());
+                assert_eq!(inner.next(), None);
 
                 AstStatement::CallFunction {
                     id,
                     param_list,
+                }
+            }
+            Rule::command_statement => {
+                let mut inner = pair.into_inner();
+
+                // <command> ( <param_list> )
+
+                let command_name = inner.next().unwrap();
+                let param_list: Vec<AstExpression> = expect_param_list(inner.next().unwrap());
+                assert_eq!(inner.next(), None);
+
+                match command_name.as_str() {
+                    "draw" => {
+                        AstStatement::Draw { param_list }
+                    }
+                    "display" | "append" => unimplemented!(),
+                    cmd => panic!("Unknown command in grammar: {}", cmd),
                 }
             }
             rule => unimplemented!("Unknown statement rule {:?}", rule),
@@ -190,6 +226,7 @@ impl AstExpression {
 
                 match name.as_str() {
                     "sphere" => {
+                        let mut center = (0.0, 0.0, 0.0);
                         let mut radius = None;
                         let mut color = None;
                         let mut reflectivity = 0.0;
@@ -212,6 +249,9 @@ impl AstExpression {
                                 Value::Color { r, g, b, a } => {
                                     color = Some((r, g, b, a));
                                 }
+                                Value::Vector { x, y, z } => {
+                                    center = (x, y, z);
+                                }
                                 _ => panic!("Unknown sphere parameter!")
                             }
                         }
@@ -227,6 +267,7 @@ impl AstExpression {
                             reflectivity,
                             transparency,
                             kind: ShapeKind::Sphere {
+                                center,
                                 radius,
                             },
                         })
