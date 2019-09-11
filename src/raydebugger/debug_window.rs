@@ -19,7 +19,6 @@ pub struct DebugWindow {
     ray_tracer: RayTracer,
     width: usize,
     height: usize,
-    pub raytrace_ortho_views: bool,
     show_anti_aliasing_edges: bool,
     antialiasing_threshold: f64,
     antialiasing_level: i32,
@@ -29,10 +28,9 @@ pub struct DebugWindow {
 impl DebugWindow {
     pub fn new(width: usize, height: usize) -> Self {
         DebugWindow {
-            ray_tracer: Self::load_ray_tracer(width, height),
+            ray_tracer: Self::load_ray_tracer(width, height, 0),
             width,
             height,
-            raytrace_ortho_views: false,
             show_anti_aliasing_edges: false,
             antialiasing_threshold: ANTIALIAS_THRESHOLD,
             antialiasing_level: ANTIALIAS_LEVEL,
@@ -40,17 +38,19 @@ impl DebugWindow {
         }
     }
 
-    fn load_ray_tracer(width: usize, height: usize) -> RayTracer {
+    fn load_ray_tracer(width: usize, height: usize, frame: usize) -> RayTracer {
         let mut ray_tracer = RayTracer::new_default(width, height);
         ray_tracer.add_test_objects();
-        if let Err(err) = load_scene(&mut ray_tracer) {
+        // FIXME: Max frames
+        let time = frame as f64 / 10 as f64;
+        if let Err(err) = load_scene(&mut ray_tracer, time) {
             eprintln!("Error parsing scene: {}", err);
         }
         ray_tracer
     }
 
-    pub fn reload_ray_tracer(&mut self) {
-        self.ray_tracer = Self::load_ray_tracer(self.width, self.height);
+    pub fn reload_ray_tracer(&mut self, frame: usize) {
+        self.ray_tracer = Self::load_ray_tracer(self.width, self.height, frame);
     }
 
     pub fn ray_tracer(&self) -> &RayTracer {

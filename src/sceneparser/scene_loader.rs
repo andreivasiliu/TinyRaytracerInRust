@@ -8,6 +8,7 @@ use pest::iterators::Pairs;
 use pest_derive::Parser;
 use std::fs::File;
 use std::io::Read;
+use crate::sceneparser::value::Value;
 
 #[derive(Parser)]
 #[grammar = "sceneparser/scene_grammar.pest"]
@@ -20,7 +21,7 @@ b = sphere(<-15, -5, -10>, 25)
 draw(csg(a, b, 'difference', rgb(0.0, 1.0, 1.0), 0.0, 0.8))
 ";
 
-pub fn load_scene(ray_tracer: &mut RayTracer) -> Result<(), pest::error::Error<Rule>> {
+pub fn load_scene(ray_tracer: &mut RayTracer, time: f64) -> Result<(), pest::error::Error<Rule>> {
     let scene = File::open("globes.scene")
         .and_then(|mut file| {
             let mut scene = String::new();
@@ -30,6 +31,7 @@ pub fn load_scene(ray_tracer: &mut RayTracer) -> Result<(), pest::error::Error<R
         .unwrap_or(SCENE.to_string());
 
     let mut context = SceneContext::new(ray_tracer);
+    context.globals().insert("time".to_string(), Value::Number(time));
     let mut pairs: Pairs<Rule> = SceneParser::parse(Rule::scene, &scene)?;
 
     let statement_list = pairs.next().unwrap();

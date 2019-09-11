@@ -44,6 +44,18 @@ pub enum AstExpression {
     Rgb { r: Box<AstExpression>, g: Box<AstExpression>, b: Box<AstExpression> },
     Object { name: String, param_list: Vec<AstExpression> },
     Minus(Box<AstExpression>),
+    BinaryOperation { a: Box<AstExpression>, operator: BinaryOperator, b: Box<AstExpression> },
+}
+
+#[derive(Debug)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+    LessThan,
+    GreaterThan,
 }
 
 pub fn expect_id(pair: Pair<Rule>) -> String {
@@ -378,6 +390,31 @@ impl AstExpression {
                     value => panic!("Cannot apply - to {:?}", value),
                 }
             }
+            AstExpression::BinaryOperation { a, operator, b } => {
+                let a = a.evaluate(context);
+                let b = b.evaluate(context);
+
+                match operator {
+                    BinaryOperator::Add => Value::Number(a.to_number() + b.to_number()),
+                    BinaryOperator::Subtract => Value::Number(a.to_number() - b.to_number()),
+                    BinaryOperator::Multiply => {
+                        match (a, b) {
+                            (Value::Number(a), Value::Number(b)) => Value::Number(a * b),
+                            (Value::Color { r, g, b, a }, Value::Number(x))
+                            | (Value::Number(x), Value::Color { r, g, b, a }) => {
+                                Value::Color { r: r * x, g: g * x, b: b * x, a: a * x }
+                            }
+                            (Value::Vector { x, y, z }, Value::Number(b))
+                            | (Value::Number(b), Value::Vector { x, y, z }) => {
+                                Value::Vector { x: x * b, y: y * b, z: z * b }
+                            }
+                            // FIXME: No panic
+                            (x, y) => panic!("Cannot multiply {:?} and {:?}", x, y),
+                        }
+                    }
+                    operator => unimplemented!("Operator {:?} not yet implemented", operator),
+                }
+            }
         }
     }
 
@@ -389,10 +426,25 @@ impl AstExpression {
                 let expr_left = inner.next().unwrap();
                 let operator = inner.next();
 
-                if let Some(_operator) = operator {
-                    let _expr_right = inner.next().unwrap();
+                if let Some(operator) = operator {
+                    let expr_right = inner.next().unwrap();
 
-                    unimplemented!()
+                    let operator = match operator.as_str() {
+                        "+" => BinaryOperator::Add,
+                        "-" => BinaryOperator::Subtract,
+                        "*" => BinaryOperator::Multiply,
+                        "/" => BinaryOperator::Divide,
+                        "%" => BinaryOperator::Modulo,
+                        ">" => BinaryOperator::GreaterThan,
+                        "<" => BinaryOperator::LessThan,
+                        operator => panic!("Unknown operator '{}' in the grammar", operator),
+                    };
+
+                    AstExpression::BinaryOperation {
+                        a: Box::new(AstExpression::from_pest(expr_left)),
+                        operator,
+                        b: Box::new(AstExpression::from_pest(expr_right)),
+                    }
                 } else {
                     assert_eq!(inner.next(), None);
                     AstExpression::from_pest(expr_left)
