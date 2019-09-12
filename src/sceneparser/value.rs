@@ -17,7 +17,7 @@ impl Value {
         match self {
             Value::Number(number) => *number,
             // FIXME: no panic
-            _ => panic!("Cannot convert value to number"),
+            value => panic!("Cannot convert value to number: {:?}", value),
         }
     }
 }

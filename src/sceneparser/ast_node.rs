@@ -1,5 +1,6 @@
 use crate::raytracer::color::Color;
 use crate::raytracer::vector::Vector;
+use crate::raytracer::transformation::MatrixTransformation;
 use super::context::{SceneContext, Identifier};
 use super::scene_loader::Rule;
 use super::value::Value;
@@ -34,6 +35,11 @@ pub enum AstStatement {
     Function(Function),
     CallFunction { id: Identifier, param_list: Vec<AstExpression> },
     Draw { param_list: Vec<AstExpression> },
+    Transformation {
+        x: Box<AstExpression>, y: Box<AstExpression>, z: Box<AstExpression>,
+        transformation: Transformation,
+        statement: Box<AstStatement>,
+    },
 }
 
 #[derive(Debug)]
@@ -56,6 +62,13 @@ pub enum BinaryOperator {
     Modulo,
     LessThan,
     GreaterThan,
+}
+
+#[derive(Debug)]
+pub enum Transformation {
+    Translate,
+    Rotate,
+    Scale,
 }
 
 pub fn expect_id(pair: Pair<Rule>) -> String {
@@ -122,6 +135,34 @@ impl AstStatement {
                     panic!("Didn't get an object on draw!");
                 }
             }
+            AstStatement::Transformation {
+                x, y, z,
+                transformation,
+                statement,
+            } => {
+                let x = x.evaluate(context).to_number();
+                let y = y.evaluate(context).to_number();
+                let z = z.evaluate(context).to_number();
+
+                let matrix_transformation = match transformation {
+                    Transformation::Translate => MatrixTransformation::create_translation_matrix(x, y, z),
+                    Transformation::Rotate => MatrixTransformation::create_rotation_matrix(x, y, z),
+                    Transformation::Scale => MatrixTransformation::create_scaling_matrix(x, y, z),
+                };
+
+                // FIXME: RAII
+                context
+                    .ray_tracer()
+                    .transformation_stack_mut()
+                    .push_transformation(matrix_transformation);
+
+                statement.execute(context);
+
+                context
+                    .ray_tracer()
+                    .transformation_stack_mut()
+                    .pop_transformation();
+            }
         }
     }
 
@@ -140,7 +181,9 @@ impl AstStatement {
             Rule::assignment_statement => {
                 let mut inner = pair.into_inner();
 
-                let local = if let Some("local") = inner.peek().map(|pair| pair.as_str()) {
+
+                let local = if let Some(Rule::local_) = inner.peek().map(|pair| pair.as_rule()) {
+                    inner.next().unwrap();
                     true
                 } else {
                     false
@@ -220,6 +263,47 @@ impl AstStatement {
                     "display" | "append" => unimplemented!(),
                     cmd => panic!("Unknown command in grammar: {}", cmd),
                 }
+            }
+            Rule::transformation_statement => {
+                let mut inner = pair.into_inner();
+
+                let transformation = inner.next().unwrap();
+                assert_eq!(transformation.as_rule(), Rule::transformation_);
+
+                let x = expect_expression(inner.next().unwrap());
+                let y = expect_expression(inner.next().unwrap());
+                let z = expect_expression(inner.next().unwrap());
+
+                let statement = inner.next().unwrap();
+
+                let transformation = match transformation.as_str() {
+                    "translate" => Transformation::Translate,
+                    "scale" => Transformation::Scale,
+                    "rotate" => Transformation::Rotate,
+                    transformation => panic!("Unknown transformation '{}'", transformation),
+                };
+
+                AstStatement::Transformation {
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    z: Box::new(z),
+                    transformation,
+                    statement: Box::new(AstStatement::from_pest(statement)),
+                }
+            }
+            Rule::do_statement => {
+                let mut inner = pair.into_inner();
+
+                let do_ = inner.next().unwrap();
+                assert_eq!(do_.as_rule(), Rule::do_);
+
+                let statement_list = inner.next().unwrap();
+                assert_eq!(statement_list.as_rule(), Rule::statement_list);
+
+                let end_ = inner.next().unwrap();
+                assert_eq!(end_.as_rule(), Rule::end_);
+
+                AstStatement::from_pest(statement_list)
             }
             rule => unimplemented!("Unknown statement rule {:?}", rule),
         }

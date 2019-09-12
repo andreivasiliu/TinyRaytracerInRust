@@ -11,6 +11,8 @@ use super::ray_debugger::OrthoAxes;
 use glib::Sender;
 use std::thread;
 
+pub type RenderedLineSender = Sender<(usize, DrawingArea, usize, Vec<Color>, bool)>;
+
 pub const ANTIALIAS_THRESHOLD: f64 = 0.01;
 pub const ANTIALIAS_LEVEL: i32 = 3;
 
@@ -212,8 +214,7 @@ impl DebugWindow {
     }
 
     pub fn create_rendering_thread(
-        &self, area: DrawingArea,
-        rendered_line_sender: Sender<(DrawingArea, usize, Vec<Color>, bool)>
+        &self, frame: usize, area: DrawingArea, rendered_line_sender: RenderedLineSender
     ) {
         // Clone the entire ray tracer and send it to another thread
         let debug_window = self.clone();
@@ -222,7 +223,7 @@ impl DebugWindow {
             match area {
                 DrawingArea::MainView => {
                     for (y, rendered_line) in debug_window.render_lines() {
-                        if let Err(_) = rendered_line_sender.send((area, y, rendered_line, false)) {
+                        if let Err(_) = rendered_line_sender.send((frame, area, y, rendered_line, false)) {
                             // Exit if main thread is no longer interested.
                             break;
                         }
@@ -231,7 +232,7 @@ impl DebugWindow {
                 area => {
                     let ortho_axes: OrthoAxes = area.into();
                     for (y, rendered_line) in debug_window.render_ortho_lines(ortho_axes) {
-                        if let Err(_) = rendered_line_sender.send((area, y, rendered_line, false)) {
+                        if let Err(_) = rendered_line_sender.send((frame, area, y, rendered_line, false)) {
                             // Exit if main thread is no longer interested.
                             break;
                         }
@@ -242,7 +243,7 @@ impl DebugWindow {
     }
 
     pub fn create_anti_aliasing_thread(
-        &self, rendered_line_sender: Sender<(DrawingArea, usize, Vec<Color>, bool)>, scene: &mut [u8]
+        &self, frame: usize, rendered_line_sender: RenderedLineSender, scene: &mut [u8]
     ) {
         // Clone the entire ray tracer and send it to another thread
         let debug_window = self.clone();
@@ -269,7 +270,7 @@ impl DebugWindow {
                     y, &mut sub_pixels, &mut ray_counter, &cloned_scene
                 );
 
-                if let Err(_) = rendered_line_sender.send((DrawingArea::MainView, y, rendered_line, true)) {
+                if let Err(_) = rendered_line_sender.send((frame, DrawingArea::MainView, y, rendered_line, true)) {
                     // Exit if main thread is no longer interested.
                     break;
                 }

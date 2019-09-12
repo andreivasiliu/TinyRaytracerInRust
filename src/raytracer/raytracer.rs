@@ -315,6 +315,10 @@ impl RayTracer {
         );
     }
 
+    pub fn transformation_stack_mut(&mut self) -> &mut TransformationStack {
+        &mut self.transformation_stack
+    }
+
     pub fn get_current_transformation(&self) -> &MatrixTransformation {
         self.transformation_stack
             .get_transformation()

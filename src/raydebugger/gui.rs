@@ -1,4 +1,4 @@
-use super::debug_window::{DebugWindow, ANTIALIAS_THRESHOLD};
+use super::debug_window::{DebugWindow, RenderedLineSender, ANTIALIAS_THRESHOLD};
 use super::ray_debugger::RayDebugger;
 
 use cairo;
@@ -50,6 +50,37 @@ impl DebuggerContext {
 
     pub fn frame(&mut self) -> &mut FrameContext {
         &mut self.frames[self.current_frame]
+    }
+
+    pub fn render_all_frames(
+        &mut self, rendered_line_sender: RenderedLineSender
+    ) {
+        for frame in 0..MAX_FRAMES {
+            self.frames[frame].render_frame(
+                self.raytrace_ortho_views,
+                frame, rendered_line_sender.clone(),
+            )
+        }
+    }
+
+    pub fn render_all_ortho_frames(
+        &mut self, rendered_line_sender: RenderedLineSender
+    ) {
+        for frame in 0..MAX_FRAMES {
+            self.frames[frame].render_ortho_frame(
+                frame, rendered_line_sender.clone(),
+            )
+        }
+    }
+
+    pub fn anti_alias_all_frames(
+        &mut self, rendered_line_sender: RenderedLineSender
+    ) {
+        for frame in 0..MAX_FRAMES {
+            self.frames[frame].anti_alias_frame(
+                frame, rendered_line_sender.clone(),
+            )
+        }
     }
 }
 
@@ -124,6 +155,57 @@ impl FrameContext {
             let edge_data: &mut [u8] = &mut self.edge_pixels.get_data().unwrap();
             self.debug_window.clear_anti_aliased_edges_line(y, edge_data)
         }
+    }
+
+    pub fn render_frame(
+        &mut self, raytrace_ortho_views: bool, current_frame: usize,
+        rendered_line_sender: RenderedLineSender,
+    ) {
+        self.debug_window.reload_ray_tracer(current_frame);
+
+        if raytrace_ortho_views {
+            self.debug_window.create_rendering_thread(
+                current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+            );
+
+            self.debug_window.create_rendering_thread(
+                current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+            );
+
+            self.debug_window.create_rendering_thread(
+                current_frame, DrawingArea::SideView, rendered_line_sender.clone()
+            );
+        }
+
+        self.debug_window.create_rendering_thread(
+            current_frame, DrawingArea::MainView, rendered_line_sender
+        );
+    }
+
+    pub fn render_ortho_frame(
+        &mut self, current_frame: usize, rendered_line_sender: RenderedLineSender,
+    ) {
+        self.debug_window.create_rendering_thread(
+            current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+        );
+
+        self.debug_window.create_rendering_thread(
+            current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+        );
+
+        self.debug_window.create_rendering_thread(
+            current_frame, DrawingArea::SideView, rendered_line_sender
+        );
+    }
+
+    pub fn anti_alias_frame(
+        &mut self, current_frame: usize, rendered_line_sender: RenderedLineSender,
+    ) {
+        let surface_data: &mut [u8] = &mut self.main_surface.get_data().unwrap();
+
+        self.debug_window.create_anti_aliasing_thread(
+            current_frame, rendered_line_sender, surface_data
+        );
     }
 }
 
@@ -387,48 +469,36 @@ fn build_gui(application: &gtk::Application) {
         let rendered_line_sender = rendered_line_sender.clone();
         move |button| {
             debugger_context.borrow_mut().raytrace_ortho_views = button.get_active();
-            let mut frame = frame(&debugger_context);
-            let debug_window = &mut frame.debug_window;
+            let animating = debugger_context.borrow().animating;
 
             if button.get_active() {
-                debug_window.create_rendering_thread(
-                    DrawingArea::TopView, rendered_line_sender.clone()
-                );
-
-                debug_window.create_rendering_thread(
-                    DrawingArea::FrontView, rendered_line_sender.clone()
-                );
-
-                debug_window.create_rendering_thread(
-                    DrawingArea::SideView, rendered_line_sender.clone()
-                );
+                if animating {
+                    debugger_context.borrow_mut().render_all_ortho_frames(
+                        rendered_line_sender.clone()
+                    )
+                } else {
+                    let current_frame = debugger_context.borrow().current_frame;
+                    frame(&debugger_context).render_ortho_frame(
+                        current_frame, rendered_line_sender.clone()
+                    );
+                }
             }
         }
     });
 
     animate_button.connect_clicked({
         let debugger_context = debugger_context.clone();
-        let drawing_area = drawing_area.clone();
-        let top_debug_area = top_debug_area.clone();
-        let front_debug_area = front_debug_area.clone();
-        let side_debug_area = side_debug_area.clone();
+        let frame_spin_button = frame_spin_button.clone();
 
         move |button| {
             if button.get_active() {
                 gtk::timeout_add(33, {
                     let debugger_context = debugger_context.clone();
-                    let drawing_area = drawing_area.clone();
-                    let top_debug_area = top_debug_area.clone();
-                    let front_debug_area = front_debug_area.clone();
-                    let side_debug_area = side_debug_area.clone();
+                    let frame_spin_button = frame_spin_button.clone();
 
                     move || {
                         let current_frame = debugger_context.borrow().current_frame;
-                        debugger_context.borrow_mut().current_frame = (current_frame + 1) % MAX_FRAMES;
-                        drawing_area.queue_draw();
-                        top_debug_area.queue_draw();
-                        front_debug_area.queue_draw();
-                        side_debug_area.queue_draw();
+                        frame_spin_button.set_value(((current_frame + 1) % MAX_FRAMES) as f64);
 
                         Continue(debugger_context.borrow().animating)
                     }
@@ -493,35 +563,38 @@ fn build_gui(application: &gtk::Application) {
         let front_debug_area = front_debug_area.clone();
         let side_debug_area = side_debug_area.clone();
 
-        move |(area, y, rendered_line, anti_aliased)| {
-            let mut frame = frame(&debugger_context);
-            let frame: &mut FrameContext = &mut frame;
+        move |(rendered_frame, area, y, rendered_line, anti_aliased)| {
+            let current_frame = debugger_context.borrow().current_frame;
+            let frame = &mut debugger_context.borrow_mut().frames[rendered_frame];
 
             match area {
                 DrawingArea::MainView => {
                     frame.set_line_anti_aliased(y, anti_aliased);
                     let surface_data: &mut [u8] = &mut frame.main_surface.get_data().unwrap();
                     frame.debug_window.apply_line(y, &rendered_line, surface_data);
-                    drawing_area.queue_draw();
                 }
                 DrawingArea::TopView => {
                     let surface_data: &mut [u8] = &mut frame.top_surface.get_data().unwrap();
 
                     frame.debug_window.apply_line(y, &rendered_line, surface_data);
-                    top_debug_area.queue_draw();
                 }
                 DrawingArea::FrontView => {
                     let surface_data: &mut [u8] = &mut frame.front_surface.get_data().unwrap();
 
                     frame.debug_window.apply_line(y, &rendered_line, surface_data);
-                    front_debug_area.queue_draw();
                 }
                 DrawingArea::SideView => {
                     let surface_data: &mut [u8] = &mut frame.side_surface.get_data().unwrap();
 
                     frame.debug_window.apply_line(y, &rendered_line, surface_data);
-                    side_debug_area.queue_draw();
                 }
+            }
+
+            if rendered_frame == current_frame {
+                side_debug_area.queue_draw();
+                front_debug_area.queue_draw();
+                drawing_area.queue_draw();
+                top_debug_area.queue_draw();
             }
 
             glib::Continue(true)
@@ -532,27 +605,16 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
         move |_button| {
-            let current_frame = debugger_context.borrow().current_frame;
-            let raytrace_ortho_views = debugger_context.borrow().raytrace_ortho_views;
-            let mut frame = frame(&debugger_context);
-            frame.debug_window.reload_ray_tracer(current_frame);
-            let debug_window = &frame.debug_window;
+            let animating = debugger_context.borrow().animating;
 
-            debug_window.create_rendering_thread(
-                DrawingArea::MainView, rendered_line_sender.clone()
-            );
+            if animating {
+                debugger_context.borrow_mut().render_all_frames(rendered_line_sender.clone());
+            } else {
+                let raytrace_ortho_views = debugger_context.borrow().raytrace_ortho_views;
+                let current_frame = debugger_context.borrow().current_frame;
 
-            if raytrace_ortho_views {
-                debug_window.create_rendering_thread(
-                    DrawingArea::TopView, rendered_line_sender.clone()
-                );
-
-                debug_window.create_rendering_thread(
-                    DrawingArea::FrontView, rendered_line_sender.clone()
-                );
-
-                debug_window.create_rendering_thread(
-                    DrawingArea::SideView, rendered_line_sender.clone()
+                frame(&debugger_context).render_frame(
+                    raytrace_ortho_views, current_frame, rendered_line_sender.clone()
                 );
             }
         }
@@ -562,14 +624,18 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
         move |_button| {
-            let mut frame = frame(&debugger_context);
-            let frame: &mut FrameContext = &mut frame;
-            let surface_data: &mut [u8] = &mut frame.main_surface.get_data().unwrap();
+            let animating = debugger_context.borrow().animating;
 
-            let rendered_line_sender = rendered_line_sender.clone();
-            frame.debug_window.create_anti_aliasing_thread(
-                rendered_line_sender, surface_data
-            );
+            if animating {
+                debugger_context.borrow_mut().anti_alias_all_frames(
+                    rendered_line_sender.clone()
+                );
+            } else {
+                let current_frame = debugger_context.borrow().current_frame;
+                frame(&debugger_context).anti_alias_frame(
+                    current_frame, rendered_line_sender.clone()
+                );
+            }
         }
     });
 
@@ -599,6 +665,7 @@ fn build_gui(application: &gtk::Application) {
     // Kick off a threaded render so the user doesn't have to
     debugger_context.borrow_mut().frame().debug_window
         .create_rendering_thread(
+            0,
             DrawingArea::MainView,
             rendered_line_sender.clone()
         );

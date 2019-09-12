@@ -5,8 +5,8 @@ comment = @{ "//" ~ (!"\n" ~ ANY)* ~ ("\n" | "\r") }
 // Names and identifiers
 alpha = { 'a'..'z' | 'A'..'Z' }
 digit = { '0'..'9' }
-alnum = { alpha | digit }
-ident = @{ alpha ~ (alpha | digit)* }
+alnum = { alpha | digit | "_" }
+ident = @{ (alpha | "_") ~ alnum* }
 
 // The whole scene code!
 // It must parse from the start of input all the way to the end of input
@@ -18,7 +18,7 @@ statement = _{ (set_camera_statement | append_light_statement | do_statement | i
 command_statement = { command_ ~ "(" ~ param_list ~ ")" }
 assignment_statement = { local_? ~ id ~ "=" ~ expression }
 function_statement = { function_ ~ id ~ "(" ~ (id ~ ","?)* ~ ")" ~ statement_list ~ end_ }
-transformation_statement = { transformation_ ~ "(" ~ param_list ~ ")" ~ statement }
+transformation_statement = { transformation_ ~ "(" ~ expression ~ "," ~ expression ~ "," ~ expression ~ ")" ~ statement }
 call_statement = { call_ ~ id ~ "(" ~ param_list ~ ")" }
 if_statement = { if_ ~ bool_expression ~ then_ ~ statement_list ~ end_ }
 do_statement = { do_ ~ statement_list ~ end_ }
