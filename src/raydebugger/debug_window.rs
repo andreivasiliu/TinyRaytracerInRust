@@ -5,7 +5,7 @@ use crate::raytracer::vector::{Vector, Ray};
 use crate::raytracer::math::INFINITY;
 use crate::raytracer::antialiaser::AntiAliaser;
 use super::easy_pixbuf::EasyPixbuf;
-use super::gui::DrawingArea;
+use super::gui::{DrawingArea, MAX_FRAMES};
 use super::ray_debugger::OrthoAxes;
 
 use glib::Sender;
@@ -42,7 +42,7 @@ impl DebugWindow {
         let mut ray_tracer = RayTracer::new_default(width, height);
         ray_tracer.add_test_objects();
         // FIXME: Max frames
-        let time = frame as f64 / 10 as f64;
+        let time = frame as f64 / MAX_FRAMES as f64;
         if let Err(err) = load_scene(&mut ray_tracer, time) {
             eprintln!("Error parsing scene: {}", err);
         }

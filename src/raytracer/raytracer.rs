@@ -119,7 +119,7 @@ impl RayTracer {
         ));
 
         self.point_lights.push(PointLight::new(
-            Vector::new(-10.0, -50.0, -50.0),
+            Vector::new(-10.0, 30.0, -50.0),
             Color::in_range(0.5, 0.5, 0.5),
             100.0
         ));

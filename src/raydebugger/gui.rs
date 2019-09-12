@@ -13,6 +13,8 @@ use gio::{ApplicationExt, ApplicationExtManual};
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 360;
 
+pub const MAX_FRAMES: usize = 30;
+
 #[derive(Clone, Copy)]
 pub enum DrawingArea {
     MainView,
@@ -25,6 +27,7 @@ struct DebuggerContext {
     button_down: bool,
     raytrace_ortho_views: bool,
     current_frame: usize,
+    animating: bool,
     frames: Vec<FrameContext>,
 }
 
@@ -32,7 +35,7 @@ impl DebuggerContext {
     pub fn new() -> Self {
         let mut frames = Vec::new();
 
-        for _ in 0..10 {
+        for _ in 0..MAX_FRAMES {
             frames.push(FrameContext::new());
         }
 
@@ -40,6 +43,7 @@ impl DebuggerContext {
             button_down: false,
             raytrace_ortho_views: false,
             current_frame: 0,
+            animating: false,
             frames,
         }
     }
@@ -178,11 +182,11 @@ fn build_gui(application: &gtk::Application) {
     let raytrace_ortho_views_button =
         gtk::CheckButton::new_with_label("Raytrace orthogonal views");
 
-    let animate =
+    let animate_button =
         gtk::CheckButton::new_with_label("Animate");
 
     let frame_spin_button =
-    gtk::SpinButton::new_with_range(0.0, 9.0, 1.0);
+    gtk::SpinButton::new_with_range(0.0, MAX_FRAMES as f64 - 1.0, 1.0);
 
     let threshold_scale =
         gtk::Scale::new_with_range(gtk::Orientation::Horizontal, 0.0, 0.1, 0.001);
@@ -211,7 +215,7 @@ fn build_gui(application: &gtk::Application) {
     hbox_bar_1.pack_end(&threshold_scale, true, true, 10);
     hbox_bar_1.pack_start(&show_ortho_views_button, false, true, 0);
     hbox_bar_1.pack_start(&raytrace_ortho_views_button, false, true, 0);
-    hbox_bar_1.pack_start(&animate, false, true, 0);
+    hbox_bar_1.pack_start(&animate_button, false, true, 0);
     hbox_bar_1.pack_start(&show_anti_alias_edges_button, false, true, 0);
 
     //let hbox_bar_2 = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -399,6 +403,39 @@ fn build_gui(application: &gtk::Application) {
                     DrawingArea::SideView, rendered_line_sender.clone()
                 );
             }
+        }
+    });
+
+    animate_button.connect_clicked({
+        let debugger_context = debugger_context.clone();
+        let drawing_area = drawing_area.clone();
+        let top_debug_area = top_debug_area.clone();
+        let front_debug_area = front_debug_area.clone();
+        let side_debug_area = side_debug_area.clone();
+
+        move |button| {
+            if button.get_active() {
+                gtk::timeout_add(33, {
+                    let debugger_context = debugger_context.clone();
+                    let drawing_area = drawing_area.clone();
+                    let top_debug_area = top_debug_area.clone();
+                    let front_debug_area = front_debug_area.clone();
+                    let side_debug_area = side_debug_area.clone();
+
+                    move || {
+                        let current_frame = debugger_context.borrow().current_frame;
+                        debugger_context.borrow_mut().current_frame = (current_frame + 1) % MAX_FRAMES;
+                        drawing_area.queue_draw();
+                        top_debug_area.queue_draw();
+                        front_debug_area.queue_draw();
+                        side_debug_area.queue_draw();
+
+                        Continue(debugger_context.borrow().animating)
+                    }
+                });
+            }
+
+            debugger_context.borrow_mut().animating = button.get_active();
         }
     });
 
