@@ -232,7 +232,7 @@ fn build_gui(application: &gtk::Application) {
     window.set_title("Ray Debugger");
 
     let (rendered_line_sender, rendered_line_receiver) =
-        glib::MainContext::channel(glib::PRIORITY_DEFAULT);
+        glib::MainContext::channel(glib::PRIORITY_DEFAULT_IDLE);
 
     let top_debug_area = gtk::DrawingArea::new();
     top_debug_area.set_size_request(WIDTH, HEIGHT);
@@ -366,21 +366,26 @@ fn build_gui(application: &gtk::Application) {
 
     drawing_area.connect_draw({
         let debugger_context = debugger_context.clone();
+        let show_anti_alias_edges_button = show_anti_alias_edges_button.clone();
         move |widget, context: &cairo::Context| {
             let frame = frame(&debugger_context);
 
             // Scale to occupy the whole drawing area
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
-            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            if width != WIDTH || height != HEIGHT {
+                context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            }
 
             // Paint the raytraced image
             context.set_source_surface(&*frame.main_surface, 0.0, 0.0);
             context.paint();
 
-            // Highlight which pixels would be anti-aliased
-            context.set_source_surface(&*frame.edge_pixels, 0.0, 0.0);
-            context.paint();
+            if show_anti_alias_edges_button.get_active() {
+                // Highlight which pixels would be anti-aliased
+                context.set_source_surface(&*frame.edge_pixels, 0.0, 0.0);
+                context.paint();
+            }
 
             Inhibit(false)
         }
