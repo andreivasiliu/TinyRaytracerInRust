@@ -9,9 +9,18 @@ use super::gui::{DrawingArea, MAX_FRAMES};
 use super::ray_debugger::OrthoAxes;
 
 use glib::Sender;
-use std::thread;
+use threadpool::ThreadPool;
 
-pub type RenderedLineSender = Sender<(usize, DrawingArea, usize, Vec<Color>, bool)>;
+pub struct RenderedLine {
+    pub frame: usize,
+    pub area: DrawingArea,
+    pub line: usize,
+    pub rendered_line: Vec<Color>,
+    pub anti_aliased: bool,
+    pub size: (usize, usize),
+}
+
+pub type RenderedLineSender = Sender<RenderedLine>;
 
 pub const ANTIALIAS_THRESHOLD: f64 = 0.01;
 pub const ANTIALIAS_LEVEL: i32 = 3;
@@ -28,9 +37,9 @@ pub struct DebugWindow {
 }
 
 impl DebugWindow {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: usize, height: usize, frame: usize) -> Self {
         DebugWindow {
-            ray_tracer: Self::load_ray_tracer(width, height, 0),
+            ray_tracer: Self::load_ray_tracer(width, height, frame),
             width,
             height,
             show_anti_aliasing_edges: false,
@@ -51,7 +60,9 @@ impl DebugWindow {
         ray_tracer
     }
 
-    pub fn reload_ray_tracer(&mut self, frame: usize) {
+    pub fn reload_ray_tracer(&mut self, frame: usize, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
         self.ray_tracer = Self::load_ray_tracer(self.width, self.height, frame);
     }
 
@@ -214,16 +225,24 @@ impl DebugWindow {
     }
 
     pub fn create_rendering_thread(
-        &self, frame: usize, area: DrawingArea, rendered_line_sender: RenderedLineSender
+        &self, thread_pool: &ThreadPool, frame: usize, area: DrawingArea, rendered_line_sender: RenderedLineSender
     ) {
         // Clone the entire ray tracer and send it to another thread
         let debug_window = self.clone();
 
-        thread::spawn(move || {
+        thread_pool.execute(move || {
             match area {
                 DrawingArea::MainView => {
                     for (y, rendered_line) in debug_window.render_lines() {
-                        if let Err(_) = rendered_line_sender.send((frame, area, y, rendered_line, false)) {
+                        let rendered_line = RenderedLine {
+                            frame,
+                            area,
+                            line: y,
+                            rendered_line,
+                            anti_aliased: false,
+                            size: (debug_window.width, debug_window.height),
+                        };
+                        if let Err(_) = rendered_line_sender.send(rendered_line) {
                             // Exit if main thread is no longer interested.
                             break;
                         }
@@ -232,7 +251,15 @@ impl DebugWindow {
                 area => {
                     let ortho_axes: OrthoAxes = area.into();
                     for (y, rendered_line) in debug_window.render_ortho_lines(ortho_axes) {
-                        if let Err(_) = rendered_line_sender.send((frame, area, y, rendered_line, false)) {
+                        let rendered_line = RenderedLine {
+                            frame,
+                            area,
+                            line: y,
+                            rendered_line,
+                            anti_aliased: false,
+                            size: (debug_window.width, debug_window.height),
+                        };
+                        if let Err(_) = rendered_line_sender.send(rendered_line) {
                             // Exit if main thread is no longer interested.
                             break;
                         }
@@ -243,7 +270,7 @@ impl DebugWindow {
     }
 
     pub fn create_anti_aliasing_thread(
-        &self, frame: usize, rendered_line_sender: RenderedLineSender, scene: &mut [u8]
+        &self, thread_pool: &ThreadPool, frame: usize, rendered_line_sender: RenderedLineSender, scene: &mut [u8]
     ) {
         // Clone the entire ray tracer and send it to another thread
         let debug_window = self.clone();
@@ -255,7 +282,7 @@ impl DebugWindow {
         );
         let cloned_scene = RaytracerPixmap::from_color_pixmap(&scene_pixbuf);
 
-        thread::spawn(move || {
+        thread_pool.execute(move || {
             let anti_aliaser = AntiAliaser::new(
                 &debug_window.ray_tracer,
                 Some(debug_window.antialiasing_threshold),
@@ -270,7 +297,16 @@ impl DebugWindow {
                     y, &mut sub_pixels, &mut ray_counter, &cloned_scene
                 );
 
-                if let Err(_) = rendered_line_sender.send((frame, DrawingArea::MainView, y, rendered_line, true)) {
+                let rendered_line = RenderedLine {
+                    frame,
+                    area: DrawingArea::MainView,
+                    line: y,
+                    rendered_line,
+                    anti_aliased: true,
+                    size: (debug_window.width, debug_window.height),
+                };
+
+                if let Err(_) = rendered_line_sender.send(rendered_line) {
                     // Exit if main thread is no longer interested.
                     break;
                 }

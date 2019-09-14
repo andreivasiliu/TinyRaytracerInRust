@@ -9,6 +9,9 @@ use glib;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use gio::{ApplicationExt, ApplicationExtManual};
+use crate::raydebugger::debug_window::RenderedLine;
+use std::convert::TryInto;
+use threadpool::{self, ThreadPool};
 
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 360;
@@ -25,9 +28,11 @@ pub enum DrawingArea {
 
 struct DebuggerContext {
     button_down: bool,
+    debug_position: Option<(f64, f64)>,
     raytrace_ortho_views: bool,
     current_frame: usize,
     animating: bool,
+    thread_pool: ThreadPool,
     frames: Vec<FrameContext>,
 }
 
@@ -35,15 +40,21 @@ impl DebuggerContext {
     pub fn new() -> Self {
         let mut frames = Vec::new();
 
-        for _ in 0..MAX_FRAMES {
-            frames.push(FrameContext::new());
+        for frame in 0..MAX_FRAMES {
+            frames.push(FrameContext::new(frame, WIDTH as usize, HEIGHT as usize));
         }
+
+        let thread_pool = threadpool::Builder::new()
+            .thread_name("ray-renderer".to_string())
+            .build();
 
         DebuggerContext {
             button_down: false,
+            debug_position: None,
             raytrace_ortho_views: false,
             current_frame: 0,
             animating: false,
+            thread_pool,
             frames,
         }
     }
@@ -52,11 +63,22 @@ impl DebuggerContext {
         &mut self.frames[self.current_frame]
     }
 
+    pub fn resize_frames(&mut self, width: usize, height: usize) {
+        for frame in 0..MAX_FRAMES {
+            let frame = &mut self.frames[frame];
+
+            if (width, height) != (frame.width, frame.height) {
+                *frame = FrameContext::new(frame.frame_number, width, height);
+            }
+        }
+    }
+
     pub fn render_all_frames(
         &mut self, rendered_line_sender: RenderedLineSender
     ) {
         for frame in 0..MAX_FRAMES {
             self.frames[frame].render_frame(
+                &self.thread_pool,
                 self.raytrace_ortho_views,
                 frame, rendered_line_sender.clone(),
             )
@@ -68,7 +90,9 @@ impl DebuggerContext {
     ) {
         for frame in 0..MAX_FRAMES {
             self.frames[frame].render_ortho_frame(
-                frame, rendered_line_sender.clone(),
+                &self.thread_pool,
+                frame,
+                rendered_line_sender.clone(),
             )
         }
     }
@@ -78,7 +102,9 @@ impl DebuggerContext {
     ) {
         for frame in 0..MAX_FRAMES {
             self.frames[frame].anti_alias_frame(
-                frame, rendered_line_sender.clone(),
+                &self.thread_pool,
+                frame,
+                rendered_line_sender.clone(),
             )
         }
     }
@@ -92,6 +118,9 @@ fn frame(context: &Rc<RefCell<DebuggerContext>>) -> RefMut<FrameContext> {
 }
 
 struct FrameContext {
+    width: usize,
+    height: usize,
+    frame_number: usize,
     debug_window: DebugWindow,
     ray_debugger: RayDebugger,
     main_surface: cairo::ImageSurface,
@@ -102,33 +131,50 @@ struct FrameContext {
 }
 
 impl FrameContext {
-    fn new() -> Self {
+    fn new(frame: usize, width: usize, height: usize) -> Self {
         let debug_window = DebugWindow::new(
-            WIDTH as usize,
-            HEIGHT as usize,
+            width,
+            height,
+            frame
         );
 
+        let (width_i32, height_i32) =
+            (width.try_into().unwrap(), height.try_into().unwrap());
+
         let ray_debugger = RayDebugger::new(
-            WIDTH,
-            HEIGHT,
+            width_i32,
+            height_i32,
         );
 
         // Top-left
-        let main_surface = cairo::ImageSurface::create(cairo::Format::Rgb24, WIDTH, HEIGHT).unwrap();
+        let main_surface = cairo::ImageSurface::create(
+            cairo::Format::Rgb24, width_i32, height_i32
+        ).unwrap();
 
         // Top-right
-        let top_surface = cairo::ImageSurface::create(cairo::Format::Rgb24, WIDTH, HEIGHT).unwrap();
+        let top_surface = cairo::ImageSurface::create(
+            cairo::Format::Rgb24, width_i32, height_i32
+        ).unwrap();
 
         // Bottom-right
-        let front_surface = cairo::ImageSurface::create(cairo::Format::Rgb24, WIDTH, HEIGHT).unwrap();
+        let front_surface = cairo::ImageSurface::create(
+            cairo::Format::Rgb24, width_i32, height_i32
+        ).unwrap();
 
         // Bottom-left
-        let side_surface = cairo::ImageSurface::create(cairo::Format::Rgb24, WIDTH, HEIGHT).unwrap();
+        let side_surface = cairo::ImageSurface::create(
+            cairo::Format::Rgb24, width_i32, height_i32
+        ).unwrap();
 
         // Brighten some pixels to show which pixels will be anti-aliased
-        let edge_pixels = cairo::ImageSurface::create(cairo::Format::ARgb32, WIDTH, HEIGHT).unwrap();
+        let edge_pixels = cairo::ImageSurface::create(
+            cairo::Format::ARgb32, width_i32, height_i32
+        ).unwrap();
 
         FrameContext {
+            width,
+            height,
+            frame_number: frame,
             debug_window,
             ray_debugger,
             main_surface,
@@ -158,53 +204,54 @@ impl FrameContext {
     }
 
     pub fn render_frame(
-        &mut self, raytrace_ortho_views: bool, current_frame: usize,
+        &mut self, thread_pool: &ThreadPool, raytrace_ortho_views: bool, current_frame: usize,
         rendered_line_sender: RenderedLineSender,
     ) {
-        self.debug_window.reload_ray_tracer(current_frame);
+        self.debug_window.reload_ray_tracer(current_frame, self.width, self.height);
+        self.ray_debugger.reset_debugger();
 
         if raytrace_ortho_views {
             self.debug_window.create_rendering_thread(
-                current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+                thread_pool, current_frame, DrawingArea::TopView, rendered_line_sender.clone()
             );
 
             self.debug_window.create_rendering_thread(
-                current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+                thread_pool, current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
             );
 
             self.debug_window.create_rendering_thread(
-                current_frame, DrawingArea::SideView, rendered_line_sender.clone()
+                thread_pool, current_frame, DrawingArea::SideView, rendered_line_sender.clone()
             );
         }
 
         self.debug_window.create_rendering_thread(
-            current_frame, DrawingArea::MainView, rendered_line_sender
+            thread_pool, current_frame, DrawingArea::MainView, rendered_line_sender
         );
     }
 
     pub fn render_ortho_frame(
-        &mut self, current_frame: usize, rendered_line_sender: RenderedLineSender,
+        &mut self, thread_pool: &ThreadPool, current_frame: usize, rendered_line_sender: RenderedLineSender,
     ) {
         self.debug_window.create_rendering_thread(
-            current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+            thread_pool, current_frame, DrawingArea::TopView, rendered_line_sender.clone()
         );
 
         self.debug_window.create_rendering_thread(
-            current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+            thread_pool, current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
         );
 
         self.debug_window.create_rendering_thread(
-            current_frame, DrawingArea::SideView, rendered_line_sender
+            thread_pool, current_frame, DrawingArea::SideView, rendered_line_sender
         );
     }
 
     pub fn anti_alias_frame(
-        &mut self, current_frame: usize, rendered_line_sender: RenderedLineSender,
+        &mut self, thread_pool: &ThreadPool, current_frame: usize, rendered_line_sender: RenderedLineSender,
     ) {
         let surface_data: &mut [u8] = &mut self.main_surface.get_data().unwrap();
 
         self.debug_window.create_anti_aliasing_thread(
-            current_frame, rendered_line_sender, surface_data
+            thread_pool, current_frame, rendered_line_sender, surface_data
         );
     }
 }
@@ -232,7 +279,7 @@ fn build_gui(application: &gtk::Application) {
     window.set_title("Ray Debugger");
 
     let (rendered_line_sender, rendered_line_receiver) =
-        glib::MainContext::channel(glib::PRIORITY_DEFAULT_IDLE);
+        glib::MainContext::channel(glib::PRIORITY_HIGH);
 
     let top_debug_area = gtk::DrawingArea::new();
     top_debug_area.set_size_request(WIDTH, HEIGHT);
@@ -246,7 +293,8 @@ fn build_gui(application: &gtk::Application) {
     let drawing_area = gtk::DrawingArea::new();
     drawing_area.set_size_request(WIDTH, HEIGHT);
     drawing_area.add_events(
-        EventMask::BUTTON_PRESS_MASK | EventMask::BUTTON_MOTION_MASK
+        EventMask::BUTTON_PRESS_MASK | EventMask::BUTTON_MOTION_MASK |
+            EventMask::BUTTON_RELEASE_MASK
     );
 
     let hbox_top = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -319,7 +367,7 @@ fn build_gui(application: &gtk::Application) {
             // Scale to occupy the whole drawing area
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
-            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            context.scale(width as f64 / frame.width as f64, height as f64 / frame.height as f64);
 
             frame.ray_debugger.draw_ortho_view(
                 context, &frame.top_surface, DrawingArea::TopView
@@ -336,7 +384,7 @@ fn build_gui(application: &gtk::Application) {
             // Scale to occupy the whole drawing area
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
-            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            context.scale(width as f64 / frame.width as f64, height as f64 / frame.height as f64);
 
             frame.ray_debugger.draw_ortho_view(
                 context, &frame.front_surface, DrawingArea::FrontView
@@ -354,7 +402,7 @@ fn build_gui(application: &gtk::Application) {
             // Scale to occupy the whole drawing area
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
-            context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            context.scale(width as f64 / frame.width as f64, height as f64 / frame.height as f64);
 
             frame.ray_debugger.draw_ortho_view(
                 context, &frame.side_surface, DrawingArea::SideView
@@ -373,8 +421,8 @@ fn build_gui(application: &gtk::Application) {
             // Scale to occupy the whole drawing area
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
-            if width != WIDTH || height != HEIGHT {
-                context.scale(width as f64 / WIDTH as f64, height as f64 / HEIGHT as f64);
+            if width as usize != frame.width || height as usize != frame.height {
+                context.scale(width as f64 / frame.width as f64, height as f64 / frame.height as f64);
             }
 
             // Paint the raytraced image
@@ -404,11 +452,12 @@ fn build_gui(application: &gtk::Application) {
             let width = widget.get_allocated_width();
             let height = widget.get_allocated_height();
 
-            let x = x * (WIDTH as f64 / width as f64);
-            let y = y * (HEIGHT as f64 / height as f64);
+            let x = x * (debugger_context.frame().width as f64 / width as f64);
+            let y = y * (debugger_context.frame().height as f64 / height as f64);
 
             debugger_context.frame().record_rays(x, y);
             debugger_context.button_down = true;
+            debugger_context.debug_position = Some((x, y));
             top_debug_area.queue_draw();
             front_debug_area.queue_draw();
             side_debug_area.queue_draw();
@@ -439,8 +488,10 @@ fn build_gui(application: &gtk::Application) {
                 let width = widget.get_allocated_width();
                 let height = widget.get_allocated_height();
 
-                let x = x * (WIDTH as f64 / width as f64);
-                let y = y * (HEIGHT as f64 / height as f64);
+                let x = x * (debugger_context.frame().width as f64 / width as f64);
+                let y = y * (debugger_context.frame().height as f64 / height as f64);
+
+                debugger_context.debug_position = Some((x, y));
 
                 debugger_context.frame().record_rays(x, y);
                 top_debug_area.queue_draw();
@@ -482,9 +533,13 @@ fn build_gui(application: &gtk::Application) {
                         rendered_line_sender.clone()
                     )
                 } else {
-                    let current_frame = debugger_context.borrow().current_frame;
-                    frame(&debugger_context).render_ortho_frame(
-                        current_frame, rendered_line_sender.clone()
+                    let mut debugger_context = debugger_context.borrow_mut();
+                    let debugger_context: &mut DebuggerContext = &mut *debugger_context;
+                    let current_frame = debugger_context.current_frame;
+                    debugger_context.frames[current_frame].render_ortho_frame(
+                        &debugger_context.thread_pool,
+                        current_frame,
+                        rendered_line_sender.clone()
                     );
                 }
             }
@@ -522,6 +577,10 @@ fn build_gui(application: &gtk::Application) {
         let side_debug_area = side_debug_area.clone();
         move |spin_button| {
             debugger_context.borrow_mut().current_frame = spin_button.get_value() as usize;
+            let debug_position = debugger_context.borrow().debug_position;
+            if let Some((x, y)) = debug_position {
+                frame(&debugger_context).record_rays(x, y);
+            }
             drawing_area.queue_draw();
             top_debug_area.queue_draw();
             front_debug_area.queue_draw();
@@ -568,9 +627,14 @@ fn build_gui(application: &gtk::Application) {
         let front_debug_area = front_debug_area.clone();
         let side_debug_area = side_debug_area.clone();
 
-        move |(rendered_frame, area, y, rendered_line, anti_aliased)| {
+        move |RenderedLine { frame: rendered_frame, area, line: y, rendered_line, anti_aliased, size }| {
             let current_frame = debugger_context.borrow().current_frame;
             let frame = &mut debugger_context.borrow_mut().frames[rendered_frame];
+
+            if (frame.width, frame.height) != size {
+                // Wrong frame size; this was a line from some other time
+                return glib::Continue(true);
+            }
 
             match area {
                 DrawingArea::MainView => {
@@ -609,17 +673,29 @@ fn build_gui(application: &gtk::Application) {
     render_button.connect_clicked({
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
+        let drawing_area = drawing_area.clone();
         move |_button| {
-            let animating = debugger_context.borrow().animating;
+            let mut debugger_context = debugger_context.borrow_mut();
+            let debugger_context: &mut DebuggerContext = &mut *debugger_context;
 
-            if animating {
-                debugger_context.borrow_mut().render_all_frames(rendered_line_sender.clone());
+            let width = drawing_area.get_allocated_width() as usize;
+            let height = drawing_area.get_allocated_height() as usize;
+
+            if debugger_context.animating {
+                debugger_context.resize_frames(width, height);
+                debugger_context.render_all_frames(rendered_line_sender.clone());
             } else {
-                let raytrace_ortho_views = debugger_context.borrow().raytrace_ortho_views;
-                let current_frame = debugger_context.borrow().current_frame;
+                let raytrace_ortho_views = debugger_context.raytrace_ortho_views;
+                let current_frame = debugger_context.current_frame;
+                let thread_pool = &debugger_context.thread_pool;
+                let frame = &mut debugger_context.frames[current_frame];
 
-                frame(&debugger_context).render_frame(
-                    raytrace_ortho_views, current_frame, rendered_line_sender.clone()
+                if (width, height) != (frame.width, frame.height) {
+                    *frame = FrameContext::new(frame.frame_number, width, height);
+                }
+
+                frame.render_frame(
+                    thread_pool, raytrace_ortho_views, current_frame, rendered_line_sender.clone()
                 );
             }
         }
@@ -636,9 +712,12 @@ fn build_gui(application: &gtk::Application) {
                     rendered_line_sender.clone()
                 );
             } else {
-                let current_frame = debugger_context.borrow().current_frame;
-                frame(&debugger_context).anti_alias_frame(
-                    current_frame, rendered_line_sender.clone()
+                let mut debugger_context = debugger_context.borrow_mut();
+                let debugger_context: &mut DebuggerContext = &mut *debugger_context;
+                let thread_pool = &debugger_context.thread_pool;
+                let current_frame = debugger_context.current_frame;
+                debugger_context.frames[current_frame].anti_alias_frame(
+                    thread_pool, current_frame, rendered_line_sender.clone()
                 );
             }
         }
@@ -667,13 +746,18 @@ fn build_gui(application: &gtk::Application) {
         Inhibit(false)
     });
 
-    // Kick off a threaded render so the user doesn't have to
-    debugger_context.borrow_mut().frame().debug_window
-        .create_rendering_thread(
-            0,
-            DrawingArea::MainView,
-            rendered_line_sender.clone()
-        );
+    {
+        let debugger_context = debugger_context.borrow_mut();
+        let current_frame = debugger_context.current_frame;
+
+        debugger_context.frames[current_frame].debug_window
+            .create_rendering_thread(
+                &debugger_context.thread_pool,
+                0,
+                DrawingArea::MainView,
+                rendered_line_sender.clone()
+            );
+    }
 
     // Run the main loop.
     gtk::main();

@@ -71,6 +71,7 @@ pub struct RayDebugger {
     pub shapes: Vec<DebugShape>,
     pub rays: Vec<RayInfo>,
 
+    debugged_position: Option<(f64, f64)>,
     width: i32,
     height: i32,
     show_normals: bool,
@@ -81,6 +82,7 @@ impl RayDebugger {
         RayDebugger {
             shapes: vec![],
             rays: vec![],
+            debugged_position: None,
             width,
             height,
             show_normals: true,
@@ -88,6 +90,13 @@ impl RayDebugger {
     }
 
     pub fn record_rays(&mut self, ray_tracer: &RayTracer, x: f64, y: f64) {
+        if self.debugged_position == Some((x, y)) {
+            // Already showing these rays, no reason to do it again
+            return;
+        } else {
+            self.debugged_position = Some((x, y));
+        }
+
         self.rays.clear();
 
         let mut ray_debugger_callback = |
@@ -124,6 +133,9 @@ impl RayDebugger {
         ray_tracer.get_pixel(x, y, &mut Some(&mut ray_debugger_callback));
     }
 
+    pub fn reset_debugger(&mut self) {
+        self.debugged_position = None;
+    }
 
     pub fn draw_ortho_view(
         &self, context: &cairo::Context, surface: &cairo::ImageSurface, area: DrawingArea
