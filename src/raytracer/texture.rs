@@ -1,7 +1,7 @@
 use super::vector::UV;
 use super::color::{Color, RaytracerPixmap, ColorPixmap};
 
-pub trait Texture: Send {
+pub trait Texture: Send + Sync {
     fn get_color_at(&self, uv_coordinates: UV) -> Color;
     fn clone_box(&self) -> Box<dyn Texture>;
 }

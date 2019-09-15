@@ -2,7 +2,7 @@ use super::texture::Texture;
 use super::vector::UV;
 use super::color::Color;
 
-pub trait Material: Send {
+pub trait Material: Send + Sync {
     fn get_color_at(&self, u: f64, v: f64) -> Color;
     fn get_reflectivity_at(&self, u: f64, v: f64) -> f64;
     fn get_transparency_at(&self, u: f64, v: f64) -> f64;

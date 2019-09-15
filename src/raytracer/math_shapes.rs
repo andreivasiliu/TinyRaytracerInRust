@@ -4,7 +4,7 @@ use super::vector::{Vector, UV, Ray};
 
 pub type AddIntersection<'a> = &'a mut dyn FnMut(f64);
 
-pub trait MathShape: Send {
+pub trait MathShape: Send + Sync {
     fn intersects(&self, ray: Ray, add_intersection: AddIntersection);
     fn get_normal(&self, surface_point: Vector) -> Vector;
     fn is_inside(&self, point: Vector) -> bool;

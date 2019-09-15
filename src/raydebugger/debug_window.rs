@@ -10,6 +10,7 @@ use super::ray_debugger::OrthoAxes;
 
 use glib::Sender;
 use threadpool::ThreadPool;
+use std::sync::Arc;
 
 pub struct RenderedLine {
     pub frame: usize,
@@ -27,7 +28,7 @@ pub const ANTIALIAS_LEVEL: i32 = 3;
 
 #[derive(Clone)]
 pub struct DebugWindow {
-    ray_tracer: RayTracer,
+    ray_tracer: Arc<RayTracer>,
     width: usize,
     height: usize,
     show_anti_aliasing_edges: bool,
@@ -39,7 +40,7 @@ pub struct DebugWindow {
 impl DebugWindow {
     pub fn new(width: usize, height: usize, frame: usize) -> Self {
         DebugWindow {
-            ray_tracer: Self::load_ray_tracer(width, height, frame),
+            ray_tracer: Arc::new(Self::load_ray_tracer(width, height, frame)),
             width,
             height,
             show_anti_aliasing_edges: false,
@@ -63,7 +64,7 @@ impl DebugWindow {
     pub fn reload_ray_tracer(&mut self, frame: usize, width: usize, height: usize) {
         self.width = width;
         self.height = height;
-        self.ray_tracer = Self::load_ray_tracer(self.width, self.height, frame);
+        self.ray_tracer = Arc::new(Self::load_ray_tracer(self.width, self.height, frame));
     }
 
     pub fn ray_tracer(&self) -> &RayTracer {
@@ -71,9 +72,10 @@ impl DebugWindow {
     }
 
     pub fn render_lines<'a>(
-        &'a self
+        &'a self, line_range: Vec<usize>
     ) -> impl Iterator<Item=(usize, Vec<Color>)> + 'a {
-        (0..self.height)
+        line_range
+            .into_iter()
             .map(move |y| {
                 let line: Vec<Color> = (0..self.width)
                     .map(|x| {
@@ -225,7 +227,8 @@ impl DebugWindow {
     }
 
     pub fn create_rendering_thread(
-        &self, thread_pool: &ThreadPool, frame: usize, area: DrawingArea, rendered_line_sender: RenderedLineSender
+        &self, thread_pool: &ThreadPool, frame: usize, line_range: Vec<usize>,
+        area: DrawingArea, rendered_line_sender: RenderedLineSender
     ) {
         // Clone the entire ray tracer and send it to another thread
         let debug_window = self.clone();
@@ -233,7 +236,7 @@ impl DebugWindow {
         thread_pool.execute(move || {
             match area {
                 DrawingArea::MainView => {
-                    for (y, rendered_line) in debug_window.render_lines() {
+                    for (y, rendered_line) in debug_window.render_lines(line_range) {
                         let rendered_line = RenderedLine {
                             frame,
                             area,

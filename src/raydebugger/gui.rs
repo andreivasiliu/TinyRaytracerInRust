@@ -12,6 +12,7 @@ use gio::{ApplicationExt, ApplicationExtManual};
 use crate::raydebugger::debug_window::RenderedLine;
 use std::convert::TryInto;
 use threadpool::{self, ThreadPool};
+use rand;
 
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 360;
@@ -73,39 +74,16 @@ impl DebuggerContext {
         }
     }
 
-    pub fn render_all_frames(
-        &mut self, rendered_line_sender: RenderedLineSender
-    ) {
-        for frame in 0..MAX_FRAMES {
-            self.frames[frame].render_frame(
-                &self.thread_pool,
-                self.raytrace_ortho_views,
-                frame, rendered_line_sender.clone(),
-            )
-        }
-    }
-
-    pub fn render_all_ortho_frames(
-        &mut self, rendered_line_sender: RenderedLineSender
-    ) {
-        for frame in 0..MAX_FRAMES {
-            self.frames[frame].render_ortho_frame(
-                &self.thread_pool,
-                frame,
-                rendered_line_sender.clone(),
-            )
-        }
-    }
-
-    pub fn anti_alias_all_frames(
-        &mut self, rendered_line_sender: RenderedLineSender
-    ) {
-        for frame in 0..MAX_FRAMES {
-            self.frames[frame].anti_alias_frame(
-                &self.thread_pool,
-                frame,
-                rendered_line_sender.clone(),
-            )
+    fn with_shuffled_frames<F: Fn(&mut FrameContext, &ThreadPool)>(&mut self, render: F) {
+        if self.animating {
+            let shuffled_frames = rand::seq::index::sample(
+                &mut rand::thread_rng(), MAX_FRAMES, MAX_FRAMES
+            );
+            for frame in shuffled_frames.iter() {
+                render(&mut self.frames[frame], &self.thread_pool)
+            }
+        } else {
+            render(&mut self.frames[self.current_frame], &self.thread_pool)
         }
     }
 }
@@ -205,43 +183,50 @@ impl FrameContext {
 
     pub fn render_frame(
         &mut self, thread_pool: &ThreadPool, raytrace_ortho_views: bool, current_frame: usize,
-        rendered_line_sender: RenderedLineSender,
+        line_range: Vec<usize>, rendered_line_sender: RenderedLineSender,
     ) {
         self.debug_window.reload_ray_tracer(current_frame, self.width, self.height);
         self.ray_debugger.reset_debugger();
 
         if raytrace_ortho_views {
             self.debug_window.create_rendering_thread(
-                thread_pool, current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+                thread_pool, current_frame, line_range.clone(),
+                DrawingArea::TopView, rendered_line_sender.clone()
             );
 
             self.debug_window.create_rendering_thread(
-                thread_pool, current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+                thread_pool, current_frame, line_range.clone(),
+                DrawingArea::FrontView, rendered_line_sender.clone()
             );
 
             self.debug_window.create_rendering_thread(
-                thread_pool, current_frame, DrawingArea::SideView, rendered_line_sender.clone()
+                thread_pool, current_frame, line_range.clone(),
+                DrawingArea::SideView, rendered_line_sender.clone()
             );
         }
 
         self.debug_window.create_rendering_thread(
-            thread_pool, current_frame, DrawingArea::MainView, rendered_line_sender
+            thread_pool, current_frame, line_range,
+            DrawingArea::MainView, rendered_line_sender
         );
     }
 
     pub fn render_ortho_frame(
-        &mut self, thread_pool: &ThreadPool, current_frame: usize, rendered_line_sender: RenderedLineSender,
+        &mut self, thread_pool: &ThreadPool, current_frame: usize, line_range: Vec<usize>, rendered_line_sender: RenderedLineSender,
     ) {
         self.debug_window.create_rendering_thread(
-            thread_pool, current_frame, DrawingArea::TopView, rendered_line_sender.clone()
+            thread_pool, current_frame, line_range.clone(),
+            DrawingArea::TopView, rendered_line_sender.clone()
         );
 
         self.debug_window.create_rendering_thread(
-            thread_pool, current_frame, DrawingArea::FrontView, rendered_line_sender.clone()
+            thread_pool, current_frame, line_range.clone(),
+            DrawingArea::FrontView, rendered_line_sender.clone()
         );
 
         self.debug_window.create_rendering_thread(
-            thread_pool, current_frame, DrawingArea::SideView, rendered_line_sender
+            thread_pool, current_frame, line_range,
+            DrawingArea::SideView, rendered_line_sender
         );
     }
 
@@ -524,24 +509,18 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
         move |button| {
-            debugger_context.borrow_mut().raytrace_ortho_views = button.get_active();
-            let animating = debugger_context.borrow().animating;
+            let mut debugger_context = debugger_context.borrow_mut();
+            debugger_context.raytrace_ortho_views = button.get_active();
 
             if button.get_active() {
-                if animating {
-                    debugger_context.borrow_mut().render_all_ortho_frames(
-                        rendered_line_sender.clone()
-                    )
-                } else {
-                    let mut debugger_context = debugger_context.borrow_mut();
-                    let debugger_context: &mut DebuggerContext = &mut *debugger_context;
-                    let current_frame = debugger_context.current_frame;
-                    debugger_context.frames[current_frame].render_ortho_frame(
-                        &debugger_context.thread_pool,
-                        current_frame,
+                debugger_context.with_shuffled_frames(|frame, thread_pool| {
+                    frame.render_ortho_frame(
+                        thread_pool,
+                        frame.frame_number,
+                        (0..frame.height).collect(),
                         rendered_line_sender.clone()
                     );
-                }
+                });
             }
         }
     });
@@ -592,10 +571,10 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let drawing_area = drawing_area.clone();
         move |scale| {
-            let mut frame = frame(&debugger_context);
-
-            frame.debug_window.set_anti_aliasing_threshold(scale.get_value());
-            frame.check_anti_aliasing();
+            debugger_context.borrow_mut().with_shuffled_frames(|frame, _| {
+                frame.debug_window.set_anti_aliasing_threshold(scale.get_value());
+                frame.check_anti_aliasing();
+            });
             drawing_area.queue_draw();
         }
     });
@@ -613,9 +592,10 @@ fn build_gui(application: &gtk::Application) {
                 threshold_scale.hide();
                 false
             };
-            let mut frame = frame(&debugger_context);
-            frame.debug_window.set_show_anti_aliasing_edges(show_edges);
-            frame.check_anti_aliasing();
+            debugger_context.borrow_mut().with_shuffled_frames(|frame, _| {
+                frame.debug_window.set_show_anti_aliasing_edges(show_edges);
+                frame.check_anti_aliasing();
+            });
             drawing_area.queue_draw();
         }
     });
@@ -681,11 +661,36 @@ fn build_gui(application: &gtk::Application) {
             let width = drawing_area.get_allocated_width() as usize;
             let height = drawing_area.get_allocated_height() as usize;
 
+            let raytrace_ortho_views = debugger_context.raytrace_ortho_views;
+
+            debugger_context.with_shuffled_frames(|frame, _thread_pool| {
+                // Change the frame's resolution if the window size changed
+                if (width, height) != (frame.width, frame.height) {
+                    *frame = FrameContext::new(frame.frame_number, width, height);
+                }
+            });
+
+            // Split the screen vertically in 6 slices, then render them sequentially for
+            // all frames.
+            let line_numbers: Vec<_> = (0..height).collect();
+            let chunk_size = (height as f32 / 1.0).ceil() as usize;
+            for line_range in line_numbers.chunks(chunk_size) {
+                debugger_context.with_shuffled_frames(|frame, thread_pool| {
+                    frame.render_frame(
+                        thread_pool,
+                        raytrace_ortho_views,
+                        frame.frame_number,
+                        line_range.into(),
+                        rendered_line_sender.clone(),
+                    )
+                });
+            }
+
+            /*
             if debugger_context.animating {
                 debugger_context.resize_frames(width, height);
                 debugger_context.render_all_frames(rendered_line_sender.clone());
             } else {
-                let raytrace_ortho_views = debugger_context.raytrace_ortho_views;
                 let current_frame = debugger_context.current_frame;
                 let thread_pool = &debugger_context.thread_pool;
                 let frame = &mut debugger_context.frames[current_frame];
@@ -698,6 +703,7 @@ fn build_gui(application: &gtk::Application) {
                     thread_pool, raytrace_ortho_views, current_frame, rendered_line_sender.clone()
                 );
             }
+            */
         }
     });
 
@@ -705,21 +711,11 @@ fn build_gui(application: &gtk::Application) {
         let debugger_context = debugger_context.clone();
         let rendered_line_sender = rendered_line_sender.clone();
         move |_button| {
-            let animating = debugger_context.borrow().animating;
-
-            if animating {
-                debugger_context.borrow_mut().anti_alias_all_frames(
-                    rendered_line_sender.clone()
+            debugger_context.borrow_mut().with_shuffled_frames(|frame, thread_pool| {
+                frame.anti_alias_frame(
+                    thread_pool, frame.frame_number, rendered_line_sender.clone()
                 );
-            } else {
-                let mut debugger_context = debugger_context.borrow_mut();
-                let debugger_context: &mut DebuggerContext = &mut *debugger_context;
-                let thread_pool = &debugger_context.thread_pool;
-                let current_frame = debugger_context.current_frame;
-                debugger_context.frames[current_frame].anti_alias_frame(
-                    thread_pool, current_frame, rendered_line_sender.clone()
-                );
-            }
+            });
         }
     });
 
@@ -733,8 +729,10 @@ fn build_gui(application: &gtk::Application) {
         move |_window, event| {
             if event.get_keyval() == gdk::enums::key::Escape {
                 window.close();
+                Inhibit(true)
+            } else {
+                Inhibit(false)
             }
-            Inhibit(true)
         }
     });
 
@@ -754,6 +752,7 @@ fn build_gui(application: &gtk::Application) {
             .create_rendering_thread(
                 &debugger_context.thread_pool,
                 0,
+                (0..HEIGHT as usize).collect(),
                 DrawingArea::MainView,
                 rendered_line_sender.clone()
             );

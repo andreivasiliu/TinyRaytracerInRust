@@ -2,7 +2,7 @@ use super::color::Color;
 use super::vector::{Vector, Ray};
 use super::raytracer::{RayType, RayTracer, RayDebuggerCallback};
 
-pub trait Camera: Send {
+pub trait Camera: Send + Sync {
     fn get_pixel_color(&self, x: f64, y: f64, ray_tracer: &RayTracer, ray_debugger_callback: RayDebuggerCallback) -> Color;
     fn create_ray(&self, x: f64, y: f64) -> Ray;
     fn clone_box(&self) -> Box<dyn Camera>;
