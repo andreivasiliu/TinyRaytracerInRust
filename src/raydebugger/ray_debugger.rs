@@ -111,10 +111,13 @@ impl RayDebugger {
                 1000.0
             };
 
-            let normal = intersected_object.map(|obj| obj
-                .get_shape()
-                .get_normal(intersection_point)
-            );
+            let normal = intersected_object.map(|obj| {
+                let normal = obj
+                    .get_shape()
+                    .get_normal(intersection_point);
+                //obj.get_shape().get_transformation().reverse_transform_vector(normal)
+                normal
+            });
 
             let ray_info = RayInfo {
                 depth,

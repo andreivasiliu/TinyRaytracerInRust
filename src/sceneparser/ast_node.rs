@@ -8,6 +8,7 @@ use super::shape::{Shape, ShapeKind, CSGOperator};
 
 use pest::iterators::Pair;
 use std::rc::Rc;
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -342,127 +343,83 @@ impl AstExpression {
                 let value_list = param_list
                     .iter().map(|param| param.evaluate(context));
 
-                match name.as_str() {
-                    "sphere" => {
-                        let mut center = Vector::new(0.0, 0.0, 0.0);
-                        let mut radius = None;
-                        let mut color = Color::BLACK;
-                        let mut reflectivity = 0.0;
-                        let mut transparency = 0.0;
-                        let mut param_number = 0;
+                let mut numbers = VecDeque::new();
+                let mut strings = VecDeque::new();
+                let mut vectors = VecDeque::new();
+                let mut objects = VecDeque::new();
+                let mut colors = VecDeque::new();
 
-                        for value in value_list {
-                            match value {
-                                Value::Number(number) => {
-                                    param_number += 1;
-
-                                    match param_number {
-                                        1 => radius = Some(number),
-                                        2 => reflectivity = number,
-                                        3 => transparency = number,
-                                        // FIXME: No panic
-                                        _ => panic!("Unknown sphere parameter!")
-                                    }
-                                }
-                                Value::Color { r, g, b, a } => {
-                                    color = Color::new(r, g, b, a);
-                                }
-                                Value::Vector { x, y, z } => {
-                                    center = Vector::new(x, y, z);
-                                }
-                                _ => panic!("Unknown sphere parameter!")
-                            }
-                        }
-
+                for value in value_list {
+                    match value {
+                        Value::Number(number) => numbers.push_back(number),
+                        Value::String(string) => strings.push_back(string),
+                        Value::Color { r, g, b, a } => {
+                            colors.push_back(Color::new(r, g, b, a))
+                        },
+                        Value::Vector { x, y, z } => {
+                            vectors.push_back(Vector::new(x, y, z))
+                        },
+                        Value::Object(shape) => objects.push_back(shape),
                         // FIXME: No panic
-                        let radius = match radius {
-                            Some(radius) => radius,
-                            None => panic!("No size given to sphere object!"),
-                        };
-
-                        let transformation =
-                            context.ray_tracer().get_current_transformation().clone();
-
-                        Value::Object(Shape {
-                            color,
-                            reflectivity,
-                            transparency,
-                            transformation,
-                            kind: ShapeKind::Sphere {
-                                center,
-                                radius,
-                            },
-                        })
-                    }
-                    "csg" => {
-                        let mut color = Color::BLACK;
-                        let mut reflectivity = 0.0;
-                        let mut transparency = 0.0;
-                        let mut operator = CSGOperator::Union;
-                        let mut param_number = 0;
-                        let mut object_number = 0;
-                        let mut object_a = None;
-                        let mut object_b = None;
-
-                        for value in value_list {
-                            match value {
-                                Value::Number(number) => {
-                                    param_number += 1;
-
-                                    match param_number {
-                                        1 => reflectivity = number,
-                                        2 => transparency = number,
-                                        // FIXME: No panic
-                                        _ => panic!("Unknown CSG parameter!")
-                                    }
-                                }
-                                Value::Color { r, g, b, a } => {
-                                    color = Color::new(r, g, b, a);
-                                }
-                                Value::String(string) => {
-                                    operator = match string.as_str() {
-                                        "union" => CSGOperator::Union,
-                                        "intersection" => CSGOperator::Intersection,
-                                        "difference" => CSGOperator::Difference,
-                                        // FIXME: No panic
-                                        operator => panic!("Unknown CSG operator: {}", operator),
-                                    }
-                                }
-                                Value::Object(shape) => {
-                                    object_number += 1;
-
-                                    match object_number {
-                                        1 => object_a = Some(shape),
-                                        2 => object_b = Some(shape),
-                                        // FIXME: No panic
-                                        _ => panic!("Unknown CSG parameter!")
-                                    }
-                                }
-                                _ => panic!("Unknown sphere parameter!")
-                            }
-                        }
-
-                        // FIXME: No panic
-                        let object_a = object_a.expect("No object for CSG!");
-                        let object_b = object_b.expect("No second object for CSG!");
-
-                        let transformation =
-                            context.ray_tracer().get_current_transformation().clone();
-
-                        Value::Object(Shape {
-                            color,
-                            reflectivity,
-                            transparency,
-                            transformation,
-                            kind: ShapeKind::CSG {
-                                operator,
-                                a: Box::new(object_a),
-                                b: Box::new(object_b),
-                            },
-                        })
-                    }
-                    _ => unimplemented!("Shape {} not yet implemented", name),
+                        Value::Texture(_) => panic!("Unexpected argument type: texture"),
+                        Value::Boolean(_) => panic!("Unexpected argument type: boolean"),
+                    };
                 }
+
+                let shape_kind = match name.as_str() {
+                    "sphere" => ShapeKind::Sphere {
+                        center: vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
+                        radius: numbers.pop_front().unwrap_or(1.0),
+                    },
+                    "cube" => ShapeKind::Cube {
+                        center: vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
+                        length: numbers.pop_front().unwrap_or(1.0),
+                    },
+                    "plane" => ShapeKind::Plane {
+                        normal: vectors.pop_front().unwrap_or(Vector::new(0.0, 1.0, 0.0)),
+                        distance: numbers.pop_front().unwrap_or(1.0),
+                    },
+                    "csg" => {
+                        let operator = strings.pop_front();
+                        let operator = operator
+                            .as_ref()
+                            .map(|string| string.as_str())
+                            .unwrap_or("union");
+                        ShapeKind::CSG {
+                            operator: match operator {
+                                "union" => CSGOperator::Union,
+                                "intersection" => CSGOperator::Intersection,
+                                "difference" => CSGOperator::Difference,
+                                // FIXME: No panic
+                                operator => panic!("Unknown CSG operator: {}", operator),
+                            },
+                            // FIXME: No expect
+                            a: Box::new(objects.pop_front().expect("Expected object 1!")),
+                            b: Box::new(objects.pop_front().expect("Expected object 2!")),
+                        }
+                    },
+                    kind => panic!("Unknown shape type in grammar: {}", kind),
+                };
+
+                let transformation =
+                    context.ray_tracer().get_current_transformation().clone();
+
+                let object = Shape {
+                    color: colors.pop_front().unwrap_or(Color::BLACK),
+                    reflectivity: numbers.pop_front().unwrap_or(0.0),
+                    transparency: numbers.pop_front().unwrap_or(0.0),
+                    kind: shape_kind,
+                    transformation,
+                };
+
+                // FIXME: No assert
+                assert!(numbers.pop_front().is_none());
+                assert!(strings.pop_front().is_none());
+                assert!(vectors.pop_front().is_none());
+                assert!(objects.pop_front().is_none());
+                assert!(colors.pop_front().is_none());
+
+                Value::Object(object)
             }
             AstExpression::Minus(expression) => {
                 match expression.evaluate(context) {

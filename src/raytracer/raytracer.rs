@@ -71,10 +71,10 @@ impl RayTracer {
 
     pub fn add_test_objects(&mut self) {
         //use super::csg::{CSG, Operator};
-        use super::math_shapes::MathPlane;
+        //use super::math_shapes::MathPlane;
         //use super::math_shapes::MathSphere;
         //use super::math_shapes::MathCube;
-        use super::material::SolidColorMaterial;
+        //use super::material::SolidColorMaterial;
         //use super::transformation::MatrixTransformation;
 
         /*
@@ -85,9 +85,11 @@ impl RayTracer {
             .push_transformation(MatrixTransformation::create_rotation_matrix(0.0, 2.0, 0.0));
         */
 
+        /*
         let t = self.transformation_stack
             .get_transformation()
             .expect("Expected transformation in stack");
+        */
 
         /*self.objects.push(RTObject::new(
             Box::new(CSG::new(
@@ -113,10 +115,12 @@ impl RayTracer {
 
         // FIXME: ...
 
+        /*
         self.objects.push(RTObject::new(
             Box::new(MathPlane::new(t.clone(), 0.0, 1.0, 0.0, 20.0)),
             Some(Box::new(SolidColorMaterial::new(Color::new(0.5, 0.0, 0.5, 1.0), 0.2, 0.0)))
         ));
+        */
 
         self.point_lights.push(PointLight::new(
             Vector::new(-10.0, 30.0, -50.0),

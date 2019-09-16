@@ -1,6 +1,6 @@
 // Inserted automatically at every ~ and repetition, unless disabled with @ or $
 WHITESPACE = _{ " " | "\n" | "\r" | comment }
-comment = @{ "//" ~ (!"\n" ~ ANY)* ~ ("\n" | "\r") }
+comment = @{ "//" ~ (!"\n" ~ ANY)* ~ ("\n" | "\r" | EOI) }
 
 // Names and identifiers
 alpha = { 'a'..'z' | 'A'..'Z' }

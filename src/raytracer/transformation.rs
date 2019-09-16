@@ -198,7 +198,7 @@ impl MatrixTransformation {
     }
 
     pub fn compose_with(&self, other: &MatrixTransformation) -> MatrixTransformation {
-        let new_matrix = multiply_matrices(self.matrix, other.matrix);
+        let new_matrix = multiply_matrices(other.matrix, self.matrix);
         let new_inverse_matrix = multiply_matrices(self.inverse_matrix, other.inverse_matrix);
 
         MatrixTransformation::new(new_matrix, new_inverse_matrix)
