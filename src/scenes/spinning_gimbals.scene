@@ -1,0 +1,60 @@
+pi = 3.14159
+f = time * pi
+
+levels = 3
+
+function drawRing()
+    a = csg(sphere(1), sphere(0.9), 'difference')
+    scale(1, 1, 0.05)
+        b = cube(2.01)
+    c = csg(a, b, 'intersection', rgb(0.8, 0.7, 0.7))
+    draw(c)
+end
+
+// Poor man's cylinder... a very long elipsoid intersected with a cube.
+function drawCylinder(color)
+    scale(1, 60, 1)
+        local a = sphere(0.5)
+    draw(csg(a, cube(1.0001), 'intersection', color))
+end
+
+function drawContraption(depth)
+        call drawRing()
+
+        if depth - 1 > 0 then
+            translate(0, 0.85, 0)  scale(0.1, 0.1, 0.1)
+                call drawCylinder(rgb(0.5, 0.5, 0.5))
+
+            translate(0, -0.85, 0) scale(0.1, 0.1, 0.1)
+                call drawCylinder(rgb(0.5, 0.5, 0.5))
+
+            scale(0.8, 0.8, 0.8)
+            rotate(0, f * 3, 0)
+            rotate(0, 0, pi / 2)
+                call drawContraption(depth - 1)
+        end
+end
+
+
+scale(300, 1000, 300)
+    call drawCylinder(rgb(0.3, 0.1, 0.4))
+
+translate(30 + 75, 0, 0)
+scale(150, 3, 3)
+rotate(0, 0, pi/2)
+    call drawCylinder(rgb(0.5, 0.5, 0.5))
+
+translate(-30 - 75, 0, 0)
+scale(150, 3, 3)
+rotate(0, 0, pi/2)
+    call drawCylinder(rgb(0.5, 0.5, 0.5))
+
+scale(30, 30, 30) do
+    call drawContraption(levels)
+end
+
+
+append light(<20, 0, -75>,  rgb(0.5, 0.5, 0.7),  100)
+rotate(0, f, 0)
+    set camera(<0, 60, -140>)
+

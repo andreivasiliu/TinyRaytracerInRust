@@ -23,7 +23,7 @@ call_statement = { call_ ~ id ~ "(" ~ param_list ~ ")" }
 if_statement = { if_ ~ bool_expression ~ then_ ~ statement_list ~ end_ }
 do_statement = { do_ ~ statement_list ~ end_ }
 append_light_statement = { append_light_ ~ "(" ~ param_list ~ ")" }
-set_camera_statement = { set_camera_ ~ "(" ~ param_list ~ ")" }
+set_camera_statement = { set_camera_ ~ "(" ~ expression ~ ")" }
 
 // Statement parameters
 param_list = { (expression ~ ","?)* }

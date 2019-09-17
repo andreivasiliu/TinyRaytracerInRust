@@ -9,6 +9,7 @@ use super::shape::{Shape, ShapeKind, CSGOperator};
 use pest::iterators::Pair;
 use std::rc::Rc;
 use std::collections::VecDeque;
+use crate::raytracer::point_light::PointLight;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -37,10 +38,13 @@ pub enum AstStatement {
     CallFunction { id: Identifier, param_list: Vec<AstExpression> },
     Draw { param_list: Vec<AstExpression> },
     Transformation {
-        x: Box<AstExpression>, y: Box<AstExpression>, z: Box<AstExpression>,
+        x: AstExpression, y: AstExpression, z: AstExpression,
         transformation: Transformation,
         statement: Box<AstStatement>,
     },
+    If { condition: AstExpression, body: Box<AstStatement> },
+    AppendLight { param_list: Vec<AstExpression> },
+    SetCamera { position: AstExpression },
 }
 
 #[derive(Debug)]
@@ -92,6 +96,49 @@ pub fn expect_expression(pair: Pair<Rule>) -> AstExpression {
     assert_eq!(pair.as_rule(), Rule::expression);
 
     AstExpression::from_pest(pair)
+}
+
+#[derive(Default)]
+struct ValuesByType {
+    numbers: VecDeque<f64>,
+    strings: VecDeque<String>,
+    vectors: VecDeque<Vector>,
+    objects: VecDeque<Shape>,
+    colors: VecDeque<Color>,
+}
+
+impl ValuesByType {
+    fn from_value_list(value_list: impl Iterator<Item=Value>) -> ValuesByType {
+        let mut values = Self::default();
+
+        for value in value_list {
+            match value {
+                Value::Number(number) => values.numbers.push_back(number),
+                Value::String(string) => values.strings.push_back(string),
+                Value::Color { r, g, b, a } => {
+                    values.colors.push_back(Color::new(r, g, b, a))
+                },
+                Value::Vector { x, y, z } => {
+                    values.vectors.push_back(Vector::new(x, y, z))
+                },
+                Value::Object(shape) => values.objects.push_back(shape),
+                // FIXME: No panic
+                Value::Texture(_) => panic!("Unexpected argument type: texture"),
+                Value::Boolean(_) => panic!("Unexpected argument type: boolean"),
+            };
+        }
+
+        values
+    }
+
+    fn assert_empty(&self) {
+        // FIXME: No assert
+        assert_eq!(self.numbers.len(), 0);
+        assert_eq!(self.strings.len(), 0);
+        assert_eq!(self.vectors.len(), 0);
+        assert_eq!(self.objects.len(), 0);
+        assert_eq!(self.colors.len(), 0);
+    }
 }
 
 impl AstStatement {
@@ -164,13 +211,54 @@ impl AstStatement {
                     .transformation_stack_mut()
                     .pop_transformation();
             }
+            AstStatement::If { condition, body } => {
+                if condition.evaluate(context).to_boolean() {
+                    body.execute(context);
+                }
+            }
+            AstStatement::AppendLight { param_list } => {
+                use crate::raytracer::transformation::Transformation;
+
+                let value_list = param_list
+                    .iter().map(|param| param.evaluate(context));
+
+                let mut values = ValuesByType::from_value_list(value_list);
+
+                let color = values.colors.pop_front()
+                    .unwrap_or(Color::new(0.5, 0.5, 0.5, 1.0));
+                let point = values.vectors.pop_front()
+                    .unwrap_or(Vector::new(0.0, 0.0, 0.0));
+                let fade_distance = values.numbers.pop_front()
+                    .unwrap_or(100.0);
+
+                let point = context
+                    .ray_tracer()
+                    .get_current_transformation()
+                    .transform_vector(point);
+
+                context.ray_tracer().add_light(PointLight::new(point, color, fade_distance));
+            }
+            AstStatement::SetCamera { position } => {
+                use crate::raytracer::transformation::Transformation;
+
+                let position = position.evaluate(context).to_vector();
+
+                let position = context
+                    .ray_tracer()
+                    .get_current_transformation()
+                    .transform_vector(position);
+
+                context.ray_tracer().set_camera_from_vector(position);
+            }
         }
     }
 
     pub fn from_pest(pair: Pair<Rule>) -> Self {
-        match pair.as_rule() {
+        let rule = pair.as_rule();
+        let mut inner = pair.into_inner();
+
+        match rule {
             Rule::statement_list => {
-                let inner = pair.into_inner();
                 let mut statement_list = Vec::new();
 
                 for pair in inner {
@@ -180,9 +268,6 @@ impl AstStatement {
                 AstStatement::StatementList(statement_list)
             }
             Rule::assignment_statement => {
-                let mut inner = pair.into_inner();
-
-
                 let local = if let Some(Rule::local_) = inner.peek().map(|pair| pair.as_rule()) {
                     inner.next().unwrap();
                     true
@@ -203,8 +288,6 @@ impl AstStatement {
                 }
             }
             Rule::function_statement => {
-                let mut inner = pair.into_inner();
-
                 // function <id> ( <id>* ) <statement_list> end
 
                 assert_eq!(inner.next().unwrap().as_rule(), Rule::function_);
@@ -234,8 +317,6 @@ impl AstStatement {
                 })
             }
             Rule::call_statement => {
-                let mut inner = pair.into_inner();
-
                 // call <id> ( <param_list> )
 
                 assert_eq!(inner.next().unwrap().as_rule(), Rule::call_);
@@ -249,8 +330,6 @@ impl AstStatement {
                 }
             }
             Rule::command_statement => {
-                let mut inner = pair.into_inner();
-
                 // <command> ( <param_list> )
 
                 let command_name = inner.next().unwrap();
@@ -266,8 +345,6 @@ impl AstStatement {
                 }
             }
             Rule::transformation_statement => {
-                let mut inner = pair.into_inner();
-
                 let transformation = inner.next().unwrap();
                 assert_eq!(transformation.as_rule(), Rule::transformation_);
 
@@ -285,16 +362,14 @@ impl AstStatement {
                 };
 
                 AstStatement::Transformation {
-                    x: Box::new(x),
-                    y: Box::new(y),
-                    z: Box::new(z),
+                    x,
+                    y,
+                    z,
                     transformation,
                     statement: Box::new(AstStatement::from_pest(statement)),
                 }
             }
             Rule::do_statement => {
-                let mut inner = pair.into_inner();
-
                 let do_ = inner.next().unwrap();
                 assert_eq!(do_.as_rule(), Rule::do_);
 
@@ -305,6 +380,33 @@ impl AstStatement {
                 assert_eq!(end_.as_rule(), Rule::end_);
 
                 AstStatement::from_pest(statement_list)
+            }
+            Rule::if_statement => {
+                // if <bool_expression> then <statement_list> end
+
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::if_);
+                let condition = AstExpression::from_pest(inner.next().unwrap());
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::then_);
+                let statement_list = AstStatement::from_pest(inner.next().unwrap());
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::end_);
+
+                AstStatement::If { condition, body: Box::new(statement_list) }
+            }
+            Rule::append_light_statement => {
+                // append_light ( <param_list> )
+
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::append_light_);
+                let param_list = expect_param_list(inner.next().unwrap());
+
+                AstStatement::AppendLight { param_list }
+            }
+            Rule::set_camera_statement => {
+                // set_camera ( <expr> )
+
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::set_camera_);
+                let position = expect_expression(inner.next().unwrap());
+
+                AstStatement::SetCamera { position }
             }
             rule => unimplemented!("Unknown statement rule {:?}", rule),
         }
@@ -322,7 +424,7 @@ impl AstExpression {
                     global.clone()
                 } else {
                     // FIXME: no panic
-                    unimplemented!("Didn't find variable, don't know how to error")
+                    unimplemented!("Didn't find variable {}, don't know how to error", id)
                 }
             }
             AstExpression::Vector { x, y, z } => {
@@ -343,44 +445,23 @@ impl AstExpression {
                 let value_list = param_list
                     .iter().map(|param| param.evaluate(context));
 
-                let mut numbers = VecDeque::new();
-                let mut strings = VecDeque::new();
-                let mut vectors = VecDeque::new();
-                let mut objects = VecDeque::new();
-                let mut colors = VecDeque::new();
-
-                for value in value_list {
-                    match value {
-                        Value::Number(number) => numbers.push_back(number),
-                        Value::String(string) => strings.push_back(string),
-                        Value::Color { r, g, b, a } => {
-                            colors.push_back(Color::new(r, g, b, a))
-                        },
-                        Value::Vector { x, y, z } => {
-                            vectors.push_back(Vector::new(x, y, z))
-                        },
-                        Value::Object(shape) => objects.push_back(shape),
-                        // FIXME: No panic
-                        Value::Texture(_) => panic!("Unexpected argument type: texture"),
-                        Value::Boolean(_) => panic!("Unexpected argument type: boolean"),
-                    };
-                }
+                let mut values = ValuesByType::from_value_list(value_list);
 
                 let shape_kind = match name.as_str() {
                     "sphere" => ShapeKind::Sphere {
-                        center: vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
-                        radius: numbers.pop_front().unwrap_or(1.0),
+                        center: values.vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
+                        radius: values.numbers.pop_front().unwrap_or(1.0),
                     },
                     "cube" => ShapeKind::Cube {
-                        center: vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
-                        length: numbers.pop_front().unwrap_or(1.0),
+                        center: values.vectors.pop_front().unwrap_or(Vector::new(0.0, 0.0, 0.0)),
+                        length: values.numbers.pop_front().unwrap_or(1.0),
                     },
                     "plane" => ShapeKind::Plane {
-                        normal: vectors.pop_front().unwrap_or(Vector::new(0.0, 1.0, 0.0)),
-                        distance: numbers.pop_front().unwrap_or(1.0),
+                        normal: values.vectors.pop_front().unwrap_or(Vector::new(0.0, 1.0, 0.0)),
+                        distance: values.numbers.pop_front().unwrap_or(1.0),
                     },
                     "csg" => {
-                        let operator = strings.pop_front();
+                        let operator = values.strings.pop_front();
                         let operator = operator
                             .as_ref()
                             .map(|string| string.as_str())
@@ -394,8 +475,8 @@ impl AstExpression {
                                 operator => panic!("Unknown CSG operator: {}", operator),
                             },
                             // FIXME: No expect
-                            a: Box::new(objects.pop_front().expect("Expected object 1!")),
-                            b: Box::new(objects.pop_front().expect("Expected object 2!")),
+                            a: Box::new(values.objects.pop_front().expect("Expected object 1!")),
+                            b: Box::new(values.objects.pop_front().expect("Expected object 2!")),
                         }
                     },
                     kind => panic!("Unknown shape type in grammar: {}", kind),
@@ -405,19 +486,15 @@ impl AstExpression {
                     context.ray_tracer().get_current_transformation().clone();
 
                 let object = Shape {
-                    color: colors.pop_front().unwrap_or(Color::BLACK),
-                    reflectivity: numbers.pop_front().unwrap_or(0.0),
-                    transparency: numbers.pop_front().unwrap_or(0.0),
+                    color: values.colors.pop_front().unwrap_or(Color::BLACK),
+                    reflectivity: values.numbers.pop_front().unwrap_or(0.0),
+                    transparency: values.numbers.pop_front().unwrap_or(0.0),
                     kind: shape_kind,
                     transformation,
                 };
 
                 // FIXME: No assert
-                assert!(numbers.pop_front().is_none());
-                assert!(strings.pop_front().is_none());
-                assert!(vectors.pop_front().is_none());
-                assert!(objects.pop_front().is_none());
-                assert!(colors.pop_front().is_none());
+                values.assert_empty();
 
                 Value::Object(object)
             }
@@ -453,6 +530,33 @@ impl AstExpression {
                             (x, y) => panic!("Cannot multiply {:?} and {:?}", x, y),
                         }
                     }
+                    BinaryOperator::Divide => {
+                        match (a, b) {
+                            (Value::Number(a), Value::Number(b)) => Value::Number(a / b),
+                            (Value::Color { r, g, b, a }, Value::Number(x))
+                            | (Value::Number(x), Value::Color { r, g, b, a }) => {
+                                Value::Color { r: r / x, g: g / x, b: b / x, a: a / x }
+                            }
+                            (Value::Vector { x, y, z }, Value::Number(b))
+                            | (Value::Number(b), Value::Vector { x, y, z }) => {
+                                Value::Vector { x: x / b, y: y / b, z: z / b }
+                            }
+                            // FIXME: No panic
+                            (x, y) => panic!("Cannot divide {:?} and {:?}", x, y),
+                        }
+                    }
+                    BinaryOperator::GreaterThan => {
+                        match (a, b) {
+                            (Value::Number(a), Value::Number(b)) => Value::Boolean(a > b),
+                            (x, y) => panic!("Cannot compare {:?} and {:?}", x, y),
+                        }
+                    }
+                    BinaryOperator::LessThan => {
+                        match (a, b) {
+                            (Value::Number(a), Value::Number(b)) => Value::Boolean(a < b),
+                            (x, y) => panic!("Cannot compare {:?} and {:?}", x, y),
+                        }
+                    }
                     operator => unimplemented!("Operator {:?} not yet implemented", operator),
                 }
             }
@@ -461,7 +565,7 @@ impl AstExpression {
 
     pub fn from_pest(pair: Pair<Rule>) -> Self {
         match pair.as_rule() {
-            Rule::expression | Rule::mult_expression => {
+            Rule::expression | Rule::mult_expression | Rule::bool_expression => {
                 let mut inner = pair.into_inner();
 
                 let expr_left = inner.next().unwrap();
