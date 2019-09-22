@@ -27,10 +27,10 @@ impl Texture for PixmapTexture {
     fn get_color_at(&self, uv_coordinates: UV) -> Color {
         let width = self.pixmap.get_width();
         let height = self.pixmap.get_height();
-        let x = uv_coordinates.u as usize * (width - 1);
-        let y = height - (uv_coordinates.v as usize * (height - 1)) - 1;
+        let x = uv_coordinates.u * (width - 1) as f64;
+        let y = height as f64 - (uv_coordinates.v * (height - 1) as f64) - 1.0;
 
-        self.pixmap.get_pixel_color(x, y)
+        self.pixmap.get_pixel_color(x as usize, y as usize)
     }
 
     fn clone_box(&self) -> Box<dyn Texture> {

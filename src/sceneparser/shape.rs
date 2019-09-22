@@ -1,14 +1,16 @@
 use crate::raytracer::rt_object::RTObject;
-use crate::raytracer::material::SolidColorMaterial;
+use crate::raytracer::material::{SolidColorMaterial, TexturedMaterial};
 use crate::raytracer::color::Color;
 use crate::raytracer::vector::Vector;
 use crate::raytracer::math_shapes::{MathSphere, MathCube, MathPlane};
 use crate::raytracer::transformation::MatrixTransformation;
 use crate::raytracer::csg::{CSG, Operator};
+use super::texture::Texture;
+use crate::raytracer::texture::PixmapTexture;
 
 #[derive(Debug, Clone)]
 pub struct Shape {
-    pub color: Color,
+    pub material: Material,
     pub reflectivity: f64,
     pub transparency: f64,
     pub kind: ShapeKind,
@@ -30,8 +32,30 @@ pub enum CSGOperator {
     Difference,
 }
 
+#[derive(Debug, Clone)]
+pub enum Material {
+    Color(Color),
+    Texture(Texture),
+}
+
 impl Shape {
     pub fn to_rt_object(&self) -> RTObject {
+        let material: Box<dyn crate::raytracer::material::Material> = match &self.material {
+            Material::Color(color) => {
+                Box::new(SolidColorMaterial::new(
+                    *color, self.reflectivity, self.transparency
+                ))
+            }
+            Material::Texture(texture) => {
+                let texture = PixmapTexture::from_pixmap(
+                    texture.pixmap().clone()
+                );
+                Box::new(TexturedMaterial::new(
+                    Box::new(texture), self.reflectivity, self.transparency
+                ))
+            }
+        };
+
         RTObject::new(
             match self.kind {
                 ShapeKind::Sphere { center, radius } => {
@@ -64,9 +88,7 @@ impl Shape {
                     ))
                 }
             },
-            Some(Box::new(SolidColorMaterial::new(
-                self.color, self.reflectivity, self.transparency
-            ))),
+            Some(material),
         )
     }
 }

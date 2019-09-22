@@ -77,7 +77,7 @@ impl std::ops::Mul for Color {
     type Output = Color;
 
     fn mul(self, rhs: Color) -> Color {
-        Color::in_range(self.r * rhs.r, self.g * rhs.g, self.b * rhs.g)
+        Color::in_range(self.r * rhs.r, self.g * rhs.g, self.b * rhs.b)
     }
 }
 
@@ -85,7 +85,7 @@ impl std::ops::Add for Color {
     type Output = Color;
 
     fn add(self, rhs: Color) -> Color {
-        Color::in_range(self.r + rhs.r, self.g + rhs.g, self.b + rhs.g)
+        Color::in_range(self.r + rhs.r, self.g + rhs.g, self.b + rhs.b)
     }
 }
 

@@ -1,0 +1,17 @@
+
+draw(plane(<0, 1, 0>, 25.01, red))
+
+translate(-50, 0, 0)
+rotate(0, 0.3, 0)
+  draw(cube(40, blue * 0.3, 0, 0.7))
+
+rotate(0, 0.3, 0)
+  draw(cube(40,  blue * 0.3,  0, 0.7))
+
+translate(50, 0, 0)
+rotate(0, 0.3, 0)
+  draw(cube(40, blue * 0.3,  0, 0.7))
+
+append light(<0, 0, -35>, white * 0.5, 100)
+
+set camera(<0, 0, -100>)

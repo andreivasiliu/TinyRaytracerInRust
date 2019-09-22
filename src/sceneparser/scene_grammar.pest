@@ -14,13 +14,14 @@ scene = _{ SOI ~ statement_list ~ EOI }
 
 // Statements
 statement_list = { statement* }
-statement = _{ (set_camera_statement | append_light_statement | do_statement | if_statement | call_statement | function_statement | command_statement | assignment_statement | transformation_statement) }
+statement = _{ (set_camera_statement | append_light_statement | do_statement | if_statement | while_statement | call_statement | function_statement | command_statement | assignment_statement | transformation_statement) }
 command_statement = { command_ ~ "(" ~ param_list ~ ")" }
 assignment_statement = { local_? ~ id ~ "=" ~ expression }
 function_statement = { function_ ~ id ~ "(" ~ (id ~ ","?)* ~ ")" ~ statement_list ~ end_ }
 transformation_statement = { transformation_ ~ "(" ~ expression ~ "," ~ expression ~ "," ~ expression ~ ")" ~ statement }
 call_statement = { call_ ~ id ~ "(" ~ param_list ~ ")" }
 if_statement = { if_ ~ bool_expression ~ then_ ~ statement_list ~ end_ }
+while_statement = { while_ ~ bool_expression ~ do_ ~ statement_list ~ end_ }
 do_statement = { do_ ~ statement_list ~ end_ }
 append_light_statement = { append_light_ ~ "(" ~ param_list ~ ")" }
 set_camera_statement = { set_camera_ ~ "(" ~ expression ~ ")" }
@@ -34,6 +35,7 @@ append_light_ = @{"append" ~ WHITESPACE ~ "light" ~ !alnum}
 set_camera_ = @{"set" ~ WHITESPACE ~ "camera" ~ !alnum}
 if_ = @{ "if" ~ !alnum }
 then_ = @{ "then" ~ !alnum }
+while_ = @{ "while" ~ !alnum }
 do_ = @{ "do" ~ !alnum }
 end_ = @{ "end" ~ !alnum }
 call_ = @{ "call" ~ !alnum }
@@ -55,6 +57,7 @@ string_literal = @{ ("\"" ~ (!"\"" ~ ANY)* ~ "\"") | ("\'" ~ (!"\'" ~ ANY)* ~ "\
 color = { "rgb" ~ "(" ~ (expression ~ ","?){3} ~ ")" }
 vector = { "<" ~ expression ~ "," ~ expression ~ "," ~ expression ~ ">" }
 object = { obj_name ~ "(" ~ param_list ~ ")" }
+texture = { "texture" ~ "(" ~ expression ~ ")" }
 
 // Expressions
 add_operator = @{ "+" | "-" }
@@ -66,6 +69,6 @@ mult_expression = { neg_expression ~ (mult_operator ~ neg_expression)* }
 neg_expression = { minus? ~ value }
 minus = @{ "-" }
 value = {
-    number_literal | color_name | color | vector
+    number_literal | color_name | color | vector | texture
     | ("(" ~ expression ~ ")") | object | string_literal | id_reference
 }

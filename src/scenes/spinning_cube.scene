@@ -1,0 +1,31 @@
+r = time * 3.14159
+
+draw(plane(<0, 1, 0>, 25.01, red))
+
+a = cube(10)
+b = cube(9)
+
+c = csg(a, b, 'difference')
+scale(1, 2, 1)
+    d = cube(8)
+
+e = csg(c, d, 'difference')
+f = cube(<0, 2, 0>, 12)
+
+rotate(0, r, 0)
+translate(0, -10, 0)
+scale(3, 3, 3)
+    g = csg(e, f, 'difference', white * 0.1)
+
+draw(g)
+
+rotate(0, r, 0)
+translate(0, -10, 0)
+scale(3, 3, 3)
+    a = cube(8.9, blue * 0.3, 0, 0.6)
+
+draw(a)
+
+append light(<0, 0, -35>, white * 0.5, 100)
+
+set camera(<0, 0, -100>)

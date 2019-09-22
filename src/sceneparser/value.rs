@@ -37,4 +37,12 @@ impl Value {
             value => panic!("Cannot convert value to vector: {:?}", value),
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Value::String(string) => string.to_owned(),
+            // FIXME: no panic
+            value => panic!("Cannot convert value to string: {:?}", value),
+        }
+    }
 }

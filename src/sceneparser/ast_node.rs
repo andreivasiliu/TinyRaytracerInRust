@@ -1,15 +1,17 @@
 use crate::raytracer::color::Color;
 use crate::raytracer::vector::Vector;
 use crate::raytracer::transformation::MatrixTransformation;
+use crate::raytracer::point_light::PointLight;
 use super::context::{SceneContext, Identifier};
 use super::scene_loader::Rule;
 use super::value::Value;
 use super::shape::{Shape, ShapeKind, CSGOperator};
+use super::texture::Texture;
 
 use pest::iterators::Pair;
 use std::rc::Rc;
 use std::collections::VecDeque;
-use crate::raytracer::point_light::PointLight;
+use crate::sceneparser::shape::Material;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -43,6 +45,7 @@ pub enum AstStatement {
         statement: Box<AstStatement>,
     },
     If { condition: AstExpression, body: Box<AstStatement> },
+    While { condition: AstExpression, body: Box<AstStatement> },
     AppendLight { param_list: Vec<AstExpression> },
     SetCamera { position: AstExpression },
 }
@@ -54,6 +57,7 @@ pub enum AstExpression {
     Vector { x: Box<AstExpression>, y: Box<AstExpression>, z: Box<AstExpression> },
     Rgb { r: Box<AstExpression>, g: Box<AstExpression>, b: Box<AstExpression> },
     Object { name: String, param_list: Vec<AstExpression> },
+    Texture { texture_file: Box<AstExpression> },
     Minus(Box<AstExpression>),
     BinaryOperation { a: Box<AstExpression>, operator: BinaryOperator, b: Box<AstExpression> },
 }
@@ -105,6 +109,7 @@ struct ValuesByType {
     vectors: VecDeque<Vector>,
     objects: VecDeque<Shape>,
     colors: VecDeque<Color>,
+    textures: VecDeque<Texture>,
 }
 
 impl ValuesByType {
@@ -123,7 +128,7 @@ impl ValuesByType {
                 },
                 Value::Object(shape) => values.objects.push_back(shape),
                 // FIXME: No panic
-                Value::Texture(_) => panic!("Unexpected argument type: texture"),
+                Value::Texture(texture) => values.textures.push_back(texture),
                 Value::Boolean(_) => panic!("Unexpected argument type: boolean"),
             };
         }
@@ -138,6 +143,7 @@ impl ValuesByType {
         assert_eq!(self.vectors.len(), 0);
         assert_eq!(self.objects.len(), 0);
         assert_eq!(self.colors.len(), 0);
+        assert_eq!(self.textures.len(), 0);
     }
 }
 
@@ -213,6 +219,11 @@ impl AstStatement {
             }
             AstStatement::If { condition, body } => {
                 if condition.evaluate(context).to_boolean() {
+                    body.execute(context);
+                }
+            }
+            AstStatement::While { condition, body } => {
+                while condition.evaluate(context).to_boolean() {
                     body.execute(context);
                 }
             }
@@ -392,6 +403,17 @@ impl AstStatement {
 
                 AstStatement::If { condition, body: Box::new(statement_list) }
             }
+            Rule::while_statement => {
+                // while <bool_expression> do <statement_list> end
+
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::while_);
+                let condition = AstExpression::from_pest(inner.next().unwrap());
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::do_);
+                let statement_list = AstStatement::from_pest(inner.next().unwrap());
+                assert_eq!(inner.next().unwrap().as_rule(), Rule::end_);
+
+                AstStatement::While { condition, body: Box::new(statement_list) }
+            }
             Rule::append_light_statement => {
                 // append_light ( <param_list> )
 
@@ -485,8 +507,14 @@ impl AstExpression {
                 let transformation =
                     context.ray_tracer().get_current_transformation().clone();
 
+                let material = if let Some(texture) = values.textures.pop_front() {
+                    Material::Texture(texture)
+                } else {
+                    Material::Color(values.colors.pop_front().unwrap_or(Color::BLACK))
+                };
+
                 let object = Shape {
-                    color: values.colors.pop_front().unwrap_or(Color::BLACK),
+                    material,
                     reflectivity: values.numbers.pop_front().unwrap_or(0.0),
                     transparency: values.numbers.pop_front().unwrap_or(0.0),
                     kind: shape_kind,
@@ -497,6 +525,10 @@ impl AstExpression {
                 values.assert_empty();
 
                 Value::Object(object)
+            }
+            AstExpression::Texture { texture_file } => {
+                let texture_file = texture_file.evaluate(context).to_string();
+                Value::Texture(Texture::from_file(&texture_file))
             }
             AstExpression::Minus(expression) => {
                 match expression.evaluate(context) {
@@ -690,6 +722,14 @@ impl AstExpression {
                 let string = &string_with_quotes[1..string_with_quotes.len()-1];
 
                 AstExpression::Value(Value::String(string.to_string()))
+            }
+            Rule::texture => {
+                let mut inner = pair.into_inner();
+
+                // texture ( <expression> )
+                let texture_file = expect_expression(inner.next().unwrap());
+
+                AstExpression::Texture { texture_file: Box::new(texture_file) }
             }
             _ => unimplemented!("Unimplemented rule: {}", pair)
         }

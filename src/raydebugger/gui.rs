@@ -17,7 +17,8 @@ use rand;
 const WIDTH: i32 = 480;
 const HEIGHT: i32 = 360;
 
-pub const MAX_FRAMES: usize = 30;
+pub const MAX_FRAMES: usize = 300;
+pub const MAX_SECONDS: u32 = 10;
 
 #[derive(Clone, Copy)]
 pub enum DrawingArea {
@@ -531,7 +532,7 @@ fn build_gui(application: &gtk::Application) {
 
         move |button| {
             if button.get_active() {
-                gtk::timeout_add(33, {
+                gtk::timeout_add(1000 / (MAX_FRAMES as u32 / MAX_SECONDS), {
                     let debugger_context = debugger_context.clone();
                     let frame_spin_button = frame_spin_button.clone();
 
